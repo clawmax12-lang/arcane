@@ -76,8 +76,16 @@ def assess_drift(
 
 
 def escalate_kill_switch(result: ReconResult, kill_switch: KillSwitch) -> None:
-    """Apply the reconciliation level to the kill switch (ORANGE -> trip, RED -> stop)."""
-    if result.level is ReconLevel.RED:
-        kill_switch.hard_stop(result.reason)
-    elif result.level is ReconLevel.ORANGE:
-        kill_switch.trip(result.reason)
+    """Apply the reconciliation level to the kill switch (ORANGE -> trip, RED -> stop).
+
+    A failed state write does not crash the loop: KillSwitch latches the escalation in
+    memory before writing, so the switch is already fail-closed for this process even if
+    the disk write raises (durability is re-checked at startup via verify_writable).
+    """
+    try:
+        if result.level is ReconLevel.RED:
+            kill_switch.hard_stop(result.reason)
+        elif result.level is ReconLevel.ORANGE:
+            kill_switch.trip(result.reason)
+    except OSError:
+        pass  # in-memory latch already escalated; do not let a write error stop the loop

@@ -10,6 +10,7 @@ PHI1: no LLM is imported here. The mistake check is a plain deterministic callab
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -29,13 +30,30 @@ from trading.risk.schema import RiskConfig
 
 @dataclass(frozen=True, slots=True)
 class AccountSnapshot:
-    """The HARD/STRUCTURED state a decision is gated on (§4.3). All values in USD/epoch."""
+    """The HARD/STRUCTURED state a decision is gated on (§4.3). All values in USD/epoch.
+
+    Every field must be FINITE: a NaN/inf snapshot would make every reject-if-violated
+    gate pass (NaN compares False to all thresholds), so non-finite input is rejected at
+    construction — the chain can never see one (red-team finding #1).
+    """
 
     equity_usd: float
     realized_daily_loss_usd: float
     cumulative_loss_usd: float
     data_as_of_epoch: float
     now_epoch: float
+
+    def __post_init__(self) -> None:
+        for name in (
+            "equity_usd",
+            "realized_daily_loss_usd",
+            "cumulative_loss_usd",
+            "data_as_of_epoch",
+            "now_epoch",
+        ):
+            value = getattr(self, name)
+            if not math.isfinite(value):
+                raise ValueError(f"AccountSnapshot.{name} must be finite, got {value!r}")
 
 
 @dataclass(frozen=True, slots=True)

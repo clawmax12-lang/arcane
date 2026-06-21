@@ -8,6 +8,7 @@ our local store (unique constraint) and the broker reject the duplicate. At-most
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -16,17 +17,23 @@ from trading.executor.intent import OrderIntent
 
 
 def client_order_id(intent: OrderIntent) -> str:
-    """Deterministic id from the fields that define order identity (no wall clock)."""
-    parts = [
+    """Deterministic id from the fields that define order identity (no wall clock).
+
+    Canonical JSON encoding (no delimiter collisions) over lossless ``float.hex`` (no
+    %g precision collisions). OrderIntent already canonicalizes the identity strings, so
+    cosmetic symbol/strategy variants map to the same id.
+    """
+    fields = [
         intent.strategy_id,
         intent.symbol,
         intent.side.value,
-        f"{intent.qty:.10g}",
+        intent.qty.hex(),
         intent.order_type.value,
-        "" if intent.limit_price is None else f"{intent.limit_price:.10g}",
+        "none" if intent.limit_price is None else intent.limit_price.hex(),
         intent.time_in_force.value,
     ]
-    digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+    payload = json.dumps(fields, separators=(",", ":"), ensure_ascii=True)
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     return f"arcane-{digest[:32]}"
 
 

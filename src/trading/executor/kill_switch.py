@@ -1,13 +1,16 @@
 """Kill switch — persisted, atomic, monotonic-toward-safety state machine.
 
-States escalate ``ARMED -> TRIPPED -> HARD_STOPPED`` and never de-escalate
-automatically. Only an explicit operator action (``arm(operator_authority=True)``,
-wired to an interactive CLI) may lower severity; agents/LLMs cannot re-arm (§7).
+States escalate ``ARMED -> TRIPPED -> HARD_STOPPED`` and never de-escalate automatically.
+Only an explicit operator action (``arm(operator_authority=True)``, wired to an
+interactive CLI) may lower severity; agents/LLMs cannot re-arm (§7).
 
 Persistence is crash-safe: writes go to a temp file, are ``fsync``'d, then atomically
-``os.replace``d into place, so a crash mid-write can never leave a half-written state.
-On read, a missing file is a fresh ``ARMED`` start; an unreadable/corrupt file fails
-SAFE to ``TRIPPED``.
+``os.replace``d into place. Two fail-safe properties (hardened after red-team findings):
+  * A genuinely missing file is a fresh ``ARMED`` start, but a dangling symlink or any
+    other unreadable/corrupt state fails SAFE to ``TRIPPED`` (finding #5).
+  * Each instance keeps an in-memory severity LATCH set *before* the disk write, so if a
+    write fails (read-only dir, disk full) the escalation still takes effect in-process
+    and ``read()`` reports the escalated state rather than the stale permissive file (#6).
 """
 
 from __future__ import annotations
@@ -39,14 +42,25 @@ class KillSwitchAuthorityError(ArcaneError):
     """Raised when a non-operator caller attempts to re-arm the kill switch."""
 
 
+class KillSwitchUnwritableError(ArcaneError):
+    """Raised at startup when the kill-switch state store is not writable."""
+
+
 class KillSwitch:
-    """File-backed kill switch. Construct with a path; safe across process restarts."""
+    """File-backed kill switch. Construct with a path; safe across process restarts.
+
+    An in-memory latch keeps a single instance fail-closed even if the disk write fails;
+    the latch is reset only by an operator re-arm.
+    """
 
     def __init__(self, path: Path = DEFAULT_KILL_SWITCH_PATH) -> None:
         self._path = path
+        self._latch: KillSwitchState = KillSwitchState.ARMED
 
     def read(self) -> KillSwitchState:
-        return self._load()[0]
+        persisted, _ = self._load()
+        # Effective state = the MOST severe of the persisted file and the in-memory latch.
+        return persisted if _SEVERITY[persisted] >= _SEVERITY[self._latch] else self._latch
 
     def reason(self) -> str:
         return self._load()[1]
@@ -69,8 +83,25 @@ class KillSwitch:
             raise KillSwitchAuthorityError(
                 "kill switch can only be re-armed by explicit operator authority (§7)"
             )
-        self._write(KillSwitchState.ARMED, reason)
+        self._write(KillSwitchState.ARMED, reason)  # may raise -> operator retries
+        self._latch = KillSwitchState.ARMED  # clear the latch only after a durable write
         return KillSwitchState.ARMED
+
+    def verify_writable(self) -> None:
+        """Raise ``KillSwitchUnwritableError`` if the state store can't be written.
+
+        Call at startup and refuse to trade if it raises — a kill switch we cannot
+        escalate to disk is not a kill switch.
+        """
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            probe = self._path.parent / (self._path.name + ".probe")
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+        except OSError as exc:
+            raise KillSwitchUnwritableError(
+                f"kill-switch state store not writable at {self._path}: {exc}"
+            ) from exc
 
     # --- internals ---
 
@@ -78,7 +109,10 @@ class KillSwitch:
         current = self.read()
         if _SEVERITY[current] >= _SEVERITY[target]:
             return current  # monotonic: never de-escalate automatically
-        self._write(target, reason)
+        # Latch in memory BEFORE the write so a write failure still escalates this process.
+        if _SEVERITY[target] > _SEVERITY[self._latch]:
+            self._latch = target
+        self._write(target, reason)  # may raise; the latch already protects us
         return target
 
     def _write(self, state: KillSwitchState, reason: str) -> None:
@@ -91,11 +125,18 @@ class KillSwitch:
         os.replace(tmp, self._path)
 
     def _load(self) -> tuple[KillSwitchState, str]:
-        if not self._path.exists():
-            return KillSwitchState.ARMED, "initial"
         try:
-            raw = json.loads(self._path.read_text(encoding="utf-8"))
+            text = self._path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            # A dangling symlink ALSO raises FileNotFoundError but is not a clean absence.
+            if self._path.is_symlink():
+                return KillSwitchState.TRIPPED, "dangling-symlink-failsafe"
+            return KillSwitchState.ARMED, "initial"
+        except OSError:
+            return KillSwitchState.TRIPPED, "unreadable-state-failsafe"
+        try:
+            raw = json.loads(text)
             state = KillSwitchState(raw["state"])
             return state, str(raw.get("reason", ""))
-        except (OSError, ValueError, KeyError, TypeError):
-            return KillSwitchState.TRIPPED, "corrupt-or-unreadable-state-failsafe"
+        except (ValueError, KeyError, TypeError):
+            return KillSwitchState.TRIPPED, "corrupt-state-failsafe"
