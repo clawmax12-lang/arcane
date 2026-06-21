@@ -5,7 +5,32 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-22 · **Branch:** `build/increment-2-data` — pushed; `main` fast-forwarded to it on GitHub.
-**Head:** `f032218` · `make inc1` AND `make inc2` → PASS (~96.8% cov, `mypy --strict`). STEP 6 live-proven; red-team remediated; **STEP 7 (PIT universe + T2 + G4) DONE.**
+**Head:** `938cf8d` · `make inc1` AND `make inc2` → PASS (~96.8% cov, `mypy --strict`). STEP 6 live-proven; red-team remediated; **STEP 7 (PIT universe + T2 + G4) DONE.**
+
+---
+
+## 🌙 Autonomous overnight run — ARMED 2026-06-22 (operator-approved scope: "Finish Increment 2")
+
+If the operator says **go**, execute this UNATTENDED, then STOP and write a morning report:
+
+1. **STEP 8** — `data/prefix_stability.py` (registry-wide `compute(df[:k]) == compute(df[:k+1])[:k]`)
+   + `data/leak_lint.py` (AST ban-list: `.date()`/`.floor`/`.normalize`/`get_calendar` outside
+   `calendar.py`, module-scope ticker literals — **WHITELIST** `calendar.session_label_for_daily_bar`
+   and `calendar.daily_bar_instant`), both wired into `make inc2`.
+2. **Comprehensive data-layer red-team** (Workflow) over the whole layer incl. universe + STEP 8 →
+   find → adversarially verify → prioritized backlog.
+3. **Remediate** every verified fix-now finding.
+4. **Seal Increment 2** → STOP.
+
+Discipline EVERY step: TDD → `make inc1 && make inc2` green → commit → push → fast-forward `main` →
+update this file + project memory. Compaction-safe: resume from the last green checkpoint.
+
+**HARD STOPS** (halt + leave a clear note, never thrash): a gate not green in ~2 tries · any operator
+decision (scope / a real tradeoff / an ADR change) · anything near the §7 never-do list or money/
+safety semantics · budget exhausted · Increment 2 sealed. **Do NOT start Increment 3.**
+
+Run via a self-paced loop (each iteration = one bounded chunk above). Morning report must state: what
+got done, every commit + `main` ref, what's green, any halt + why, and the exact resume point.
 
 ---
 
