@@ -93,6 +93,8 @@ def evaluate_pre_submit(
 
     # 2. Data freshness (M17) — no trading on stale or future-dated bars.
     age = snapshot.now_epoch - snapshot.data_as_of_epoch
+    if not math.isfinite(age):  # pragma: no cover - unreachable: AccountSnapshot rejects non-finite
+        return GateDecision(False, coid, "data_freshness", f"non-finite data age {age}")
     if age < 0 or age > max_bar_age_s:
         return GateDecision(
             False,
