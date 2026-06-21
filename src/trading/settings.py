@@ -15,6 +15,8 @@ from pathlib import Path
 
 from trading.risk.errors import ArcaneError
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]  # .../Trade (repo root; where .env lives)
+
 REQUIRED_KEYS: tuple[str, ...] = (
     "APCA_API_KEY_ID",
     "APCA_API_SECRET_KEY",
@@ -65,9 +67,21 @@ def read_dotenv(path: str | Path) -> dict[str, str]:
     return result
 
 
-def load_settings(env: Mapping[str, str] | None = None) -> Settings:
-    """Validate required credentials; report missing optional ones for degraded mode."""
-    src: Mapping[str, str] = os.environ if env is None else env
+def load_settings(
+    env: Mapping[str, str] | None = None, *, dotenv_path: Path | None = None
+) -> Settings:
+    """Validate required credentials; report missing optional ones for degraded mode.
+
+    With no explicit ``env``, values come from the process environment LAYERED OVER the project
+    ``.env`` (real env vars win), so the documented ``pytest -m live`` / script path authenticates
+    from ``.env`` without a manual ``source``. Passing ``env=`` (tests) bypasses ``.env`` entirely.
+    """
+    src: Mapping[str, str]
+    if env is not None:
+        src = env
+    else:
+        path = dotenv_path if dotenv_path is not None else _PROJECT_ROOT / ".env"
+        src = {**read_dotenv(path), **os.environ}
 
     missing_required = [k for k in REQUIRED_KEYS if not src.get(k)]
     if missing_required:

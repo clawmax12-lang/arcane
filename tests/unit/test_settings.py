@@ -64,3 +64,24 @@ def test_dotenv_then_load(tmp_path: Path) -> None:
     p.write_text("APCA_API_KEY_ID=PK\nAPCA_API_SECRET_KEY=sec\nANTHROPIC_API_KEY=sk\n")
     s = load_settings(read_dotenv(p))
     assert s.get("APCA_API_SECRET_KEY") == "sec"
+
+
+def test_load_settings_reads_dotenv_when_no_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No explicit env -> values come from .env (layered under the real environment), so the
+    # documented `pytest -m live` path authenticates without a manual `source .env`.
+    p = tmp_path / ".env"
+    p.write_text("APCA_API_KEY_ID=PKfromfile\nAPCA_API_SECRET_KEY=sec\nANTHROPIC_API_KEY=sk\n")
+    for k in ("APCA_API_KEY_ID", "APCA_API_SECRET_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    s = load_settings(dotenv_path=p)
+    assert s.get("APCA_API_KEY_ID") == "PKfromfile"
+
+
+def test_real_env_overrides_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    p = tmp_path / ".env"
+    p.write_text("APCA_API_KEY_ID=FROMFILE\nAPCA_API_SECRET_KEY=sec\nANTHROPIC_API_KEY=sk\n")
+    monkeypatch.setenv("APCA_API_KEY_ID", "FROMENV")  # real export must win over .env
+    s = load_settings(dotenv_path=p)
+    assert s.get("APCA_API_KEY_ID") == "FROMENV"
