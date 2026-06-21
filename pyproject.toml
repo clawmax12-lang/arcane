@@ -54,7 +54,7 @@ files = ["src/trading"]
 
 # Third-party libraries without complete type stubs — imports resolve, types not enforced.
 [[tool.mypy.overrides]]
-module = ["exchange_calendars.*", "alpaca.*", "duckdb.*", "pyarrow.*"]
+module = ["exchange_calendars.*", "alpaca.*", "duckdb.*", "pyarrow.*", "pandas", "pandas.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
