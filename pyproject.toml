@@ -7,11 +7,17 @@ dependencies = [
     "pydantic>=2.6",
     "pyyaml>=6.0",
     "structlog>=24.1",
+    # Increment 2 — data spine (verified to resolve on cp313 via uv):
+    "alpaca-py==0.43.4",
+    "pandas>=3.0,<3.1",
+    "numpy>=2.0",
+    "pyarrow>=16",
+    "duckdb>=1.1",
+    "exchange-calendars==4.13.2",
+    "pandera>=0.32,<0.33",
+    "httpx>=0.28",
 ]
 
-# Heavier tiers are added in later increments (kept out of the safety-spine env):
-#   data = numpy, pandas, polars, duckdb, pyarrow, scipy, scikit-learn, statsmodels, hmmlearn, alpaca-py
-#   ml   = torch (cpu index), faiss-cpu, chromadb
 [dependency-groups]
 dev = [
     "pytest>=8.0",
@@ -32,7 +38,10 @@ packages = ["src/trading"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not live'"
+markers = [
+    "live: test hits the real Alpaca API over the network; excluded from make inc1/inc2",
+]
 
 [tool.coverage.run]
 source = ["trading"]
@@ -42,6 +51,11 @@ branch = true
 python_version = "3.13"
 strict = true
 files = ["src/trading"]
+
+# Third-party libraries without complete type stubs — imports resolve, types not enforced.
+[[tool.mypy.overrides]]
+module = ["exchange_calendars.*", "alpaca.*", "duckdb.*", "pyarrow.*"]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100
