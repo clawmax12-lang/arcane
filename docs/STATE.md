@@ -4,8 +4,8 @@
 > `docs/adr/ADR-001-foundation.md`, then run `make inc1`.** This is the canonical,
 > version-controlled state so the process is never lost to a context compaction.
 
-**As of:** 2026-06-21 · **Branch:** `build/increment-2-data` — pushed; `main` fast-forwarded to it on GitHub.
-**Head:** `3d44ead` · `make inc1` AND `make inc2` → PASS (~96.6% cov, `mypy --strict`). **STEP 6 PROVEN on live Alpaca IEX data.**
+**As of:** 2026-06-22 · **Branch:** `build/increment-2-data` — pushed; `main` fast-forwarded to it on GitHub.
+**Head:** `fb06171` · `make inc1` AND `make inc2` → PASS (~96.6% cov, `mypy --strict`). STEP 6 live-proven; **data-layer red-team complete + all fix-now items remediated.**
 
 ---
 
@@ -15,7 +15,7 @@
 ✅ Onboarding   5 keys verified (Alpaca paper, Anthropic, Tavily, Firecrawl+MCP, Apify)
 ✅ ADR-001      architecture decided (edge-falsification harness; paper-only; lean scope)
 ✅ Inc 1        SAFETY SPINE — built, TDD, and CERTIFIED by 3 adversarial red-team passes
-🔄 Inc 2        Alpaca data spine — STEPs 0–6 DONE (STEP 6 proven on LIVE data); red-team running → remediate → STEP 7  ← HERE
+🔄 Inc 2        Alpaca data spine — STEPs 0–6 DONE + red-team-hardened (live-proven); STEP 7 next  ← HERE
 ⬜ Inc 3        Factors (10–15, lean)
 ⬜ Inc 4        Strategies + backtest
 ⬜ Inc 5        Bias-gate + FIRST paper submit   (needs Discord paging webhook first)
@@ -29,11 +29,19 @@ Honest scope (ADR-001): Inc 1–8 ≈ 55–90 focused build+test hours + a manda
 
 ## Exact next step (Increment 2 — STEP 7 of 9)
 
-**IN FLIGHT:** data-layer adversarial red-team (Workflow `wf_d4deb502-ad8` — 9 specialist lenses →
-adversarial verify → prioritized backlog). **Remediate its verified `fix_now` backlog BEFORE STEP 7.**
-STEP 6 is now proven end-to-end on live IEX data; the vendor pydantic-`TzInfo(0)` bug is fixed by a
-structural tz-canonicalization in the `@final` base loader (commit `3d44ead`). Known-open suspect the
-audit will rule on: `settings.read_dotenv()` is orphaned, so `pytest -m live` can't auth from `.env`.
+**RED-TEAM COMPLETE** (`wf_d4deb502-ad8`, 9 lenses → adversarial verify → synth; 28 findings → ~9
+issues; core PIT/leak guarantees were sound, no finding was a live leak). **All 8 `fix_now` items
+REMEDIATED, gated, committed:** ALPACA-001 transport (`requests`, not httpx — was an uncaught
+network-failure hole) · midnight-ET fail-closed session assertion via `calendar.session_label_for_daily_bar`
+(replaced silent session-filtering) · empty/non-session fail-closed · `assert_utc` before stamping ·
+feed/SIP provenance pinned (`SUPPORTED_FEEDS` + `IS_SIP_CONSOLIDATED`) · cache ADR-F7 disk-low pause +
+`.parquet.tmp` cleanup · `read_dotenv` wired into `load_settings` (live auth works) · doc honesty
+(G4 not wired; design §6 daily-label correction). Full triage + DEFER / WON'T-FIX: `docs/INC2-HARDENING-BACKLOG.md`.
+
+**NEXT = STEP 7** — `src/trading/data/universe.py` (PIT universe, DEGRADED, survivorship T2 returns
+`passed=False`); also wire the top DEFER items there (coverage_degraded G4 end-to-end; decide PIT-empties
+semantics) and a structured-logging/observability pass. Then STEP 8 (`prefix_stability` + `leak_lint`
+into `make inc2`) → final data-layer sign-off → Increment 3.
 
 Full design + build plan: `docs/INCREMENT-2-DESIGN.md`. DONE & committed: STEP 0 deps+gate ·
 STEP 1 reliability+errors · STEP 2 bar schema+BarMeta+IEX stamp · STEP 3 calendar(side='left'
