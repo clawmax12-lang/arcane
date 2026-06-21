@@ -24,6 +24,14 @@ def test_submit_is_stub_until_increment_2() -> None:
         PaperBroker().submit("arcane-abc")
 
 
+def test_paper_attribute_is_read_only() -> None:
+    # `paper` is a derived property (single source of truth = ALPACA_PAPER); a stray
+    # assignment that tries to flip it to live must fail, not silently succeed.
+    broker = PaperBroker()
+    with pytest.raises(AttributeError):
+        broker.paper = False  # type: ignore[misc]
+
+
 def test_alpaca_paper_literal_is_true_in_source() -> None:
     # AST check (ignores docstrings/comments): the constant must literally be True.
     tree = ast.parse(inspect.getsource(broker_paper))
