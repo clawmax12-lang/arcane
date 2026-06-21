@@ -136,3 +136,11 @@ def test_verify_writable_raises_on_readonly_store(tmp_path: Path) -> None:
 
 def test_verify_writable_ok_on_writable_store(tmp_path: Path) -> None:
     KillSwitch(tmp_path / "ks.json").verify_writable()  # must not raise
+
+
+def test_finding5b_dangling_parent_symlink_fails_safe(tmp_path: Path) -> None:
+    # A symlink at a PARENT component pointing to a nonexistent dir must NOT read as a
+    # clean fresh start (is_symlink only checks the final component). v2 red-team residual.
+    blink = tmp_path / "blink"
+    os.symlink(tmp_path / "ghost_dir", blink)  # parent symlink -> nonexistent target
+    assert KillSwitch(blink / "ks.json").read() is KillSwitchState.TRIPPED

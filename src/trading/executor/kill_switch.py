@@ -128,9 +128,12 @@ class KillSwitch:
         try:
             text = self._path.read_text(encoding="utf-8")
         except FileNotFoundError:
-            # A dangling symlink ALSO raises FileNotFoundError but is not a clean absence.
-            if self._path.is_symlink():
-                return KillSwitchState.TRIPPED, "dangling-symlink-failsafe"
+            # A genuine fresh start requires the path itself NOT to be a (dangling) symlink
+            # AND the parent to resolve to a real directory. is_symlink() only inspects the
+            # final component, so a dangling PARENT-component symlink is caught by
+            # parent.is_dir() (which follows links) returning False -> fail safe to TRIPPED.
+            if self._path.is_symlink() or not self._path.parent.is_dir():
+                return KillSwitchState.TRIPPED, "unresolvable-path-failsafe"
             return KillSwitchState.ARMED, "initial"
         except OSError:
             return KillSwitchState.TRIPPED, "unreadable-state-failsafe"
