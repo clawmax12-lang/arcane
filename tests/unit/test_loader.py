@@ -11,6 +11,7 @@ import pytest
 from pydantic import TypeAdapter
 
 from trading.data.cache import ParquetCache
+from trading.data.errors import CalendarError, FeedMismatchError
 from trading.data.loader import DataLoader, LoadParams
 from trading.data.pit import AsOf
 from trading.data.reliability import Reliability
@@ -139,3 +140,51 @@ def test_non_canonical_vendor_utc_index_is_normalized(tmp_path: Path) -> None:
     assert df.index.dtype == pd.api.types.pandas_dtype("datetime64[ns, UTC]")
     assert str(df["ingest_ts"].dtype) == "datetime64[ns, UTC]"
     assert len(df) == 5
+
+
+class _NaiveLoader(DataLoader):
+    def _fetch(self, p: LoadParams) -> pd.DataFrame:
+        df = _raw_daily(3)
+        df.index = df.index.tz_localize(None)  # tz-naive -> must fail closed
+        return df
+
+
+def test_tz_naive_fetch_fails_closed(tmp_path: Path) -> None:
+    # assert_utc runs BEFORE stamping/pit_guard, so a tz-naive _fetch raises a typed CalendarError
+    # rather than a raw TypeError deep in pit_guard's comparison.
+    loader = _NaiveLoader(ParquetCache(tmp_path))
+    with pytest.raises(CalendarError):
+        loader.load(
+            symbol="AAPL", start=_START, end=_END, as_of=AsOf(datetime(2024, 7, 9, tzinfo=UTC))
+        )
+
+
+def test_unsupported_feed_rejected(tmp_path: Path) -> None:
+    loader = _FakeLoader(ParquetCache(tmp_path))
+    with pytest.raises(FeedMismatchError, match="sip"):
+        loader.load(
+            symbol="AAPL",
+            start=_START,
+            end=_END,
+            as_of=AsOf(datetime(2024, 7, 9, tzinfo=UTC)),
+            feed="sip",
+        )
+
+
+class _SipLoader(_FakeLoader):
+    SUPPORTED_FEEDS = frozenset({"sip"})
+    IS_SIP_CONSOLIDATED = True
+
+
+def test_is_sip_consolidated_pinned_to_loader_not_caller(tmp_path: Path) -> None:
+    # Provenance is the SOURCE's, not the feed kwarg: an IEX loader can never be stamped SIP.
+    loader = _SipLoader(ParquetCache(tmp_path))
+    res = loader.load(
+        symbol="AAPL",
+        start=_START,
+        end=_END,
+        as_of=AsOf(datetime(2024, 7, 9, tzinfo=UTC)),
+        feed="sip",
+    )
+    assert res.meta.is_sip_consolidated is True
+    assert res.meta.feed == "sip"

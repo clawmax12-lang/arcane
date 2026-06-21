@@ -25,7 +25,7 @@ from trading.data.bar_schema import (
     validate_bars,
 )
 from trading.data.cache import ParquetCache, cache_key
-from trading.data.errors import CalendarError, RestatedSourceError
+from trading.data.errors import CalendarError, FeedMismatchError, RestatedSourceError
 from trading.data.pit import AsOf, pit_guard
 from trading.data.quality import run_quality_gate
 from trading.data.reliability import Reliability
@@ -132,6 +132,8 @@ class DataLoader(ABC):
     SCHEMA_VERSION: int = 1
     requires_pit_ingest_ts: bool = False
     PUBLISH_LAG: timedelta = timedelta(days=1)  # conservative default (one daily timeframe)
+    SUPPORTED_FEEDS: frozenset[str] = frozenset({FEED_IEX})  # a loader serves only feeds it can
+    IS_SIP_CONSOLIDATED: bool = False  # provenance pinned to the SOURCE, never the caller's kwarg
 
     def __init__(self, cache: ParquetCache) -> None:
         self._cache = cache
@@ -149,6 +151,11 @@ class DataLoader(ABC):
         adjustment: str = ADJUSTMENT_ALL,
         session: str = "XNYS",
     ) -> LoadResult:
+        if feed not in self.SUPPORTED_FEEDS:
+            raise FeedMismatchError(
+                f"{type(self).__name__} cannot serve feed {feed!r}; "
+                f"supported: {sorted(self.SUPPORTED_FEEDS)}"
+            )
         p = LoadParams.build(
             symbol=symbol,
             timeframe=timeframe,
@@ -167,6 +174,7 @@ class DataLoader(ABC):
             return LoadResult(frame=ImmutableFrame(cached), meta=self._meta(p, cached))
 
         df = self._coerce_dtypes(self._fetch(p))
+        calendar.assert_utc(df.index)  # (h) tz-naive/non-UTC fails closed BEFORE stamping + PIT
         df = self._stamp_ingest_ts(df, p)
         df = pit_guard(df, p.as_of)
         df = self._align_calendar(df, p)
@@ -230,7 +238,7 @@ class DataLoader(ABC):
             reliability=Reliability.HARD,
             as_of=p.as_of.ts,
             survivorship_unverified=True,
-            is_sip_consolidated=(p.feed == "sip"),
+            is_sip_consolidated=type(self).IS_SIP_CONSOLIDATED,
             publish_lag_seconds=self.PUBLISH_LAG.total_seconds(),
             cache_key=p.key(),
             row_count=len(df),
