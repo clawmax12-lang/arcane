@@ -5,7 +5,7 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-22 · **Branch:** `build/increment-2-data` — pushed; `main` fast-forwarded to it on GitHub.
-**Head:** `fb06171` · `make inc1` AND `make inc2` → PASS (~96.6% cov, `mypy --strict`). STEP 6 live-proven; **data-layer red-team complete + all fix-now items remediated.**
+**Head:** `f032218` · `make inc1` AND `make inc2` → PASS (~96.8% cov, `mypy --strict`). STEP 6 live-proven; red-team remediated; **STEP 7 (PIT universe + T2 + G4) DONE.**
 
 ---
 
@@ -15,7 +15,7 @@
 ✅ Onboarding   5 keys verified (Alpaca paper, Anthropic, Tavily, Firecrawl+MCP, Apify)
 ✅ ADR-001      architecture decided (edge-falsification harness; paper-only; lean scope)
 ✅ Inc 1        SAFETY SPINE — built, TDD, and CERTIFIED by 3 adversarial red-team passes
-🔄 Inc 2        Alpaca data spine — STEPs 0–6 DONE + red-team-hardened (live-proven); STEP 7 next  ← HERE
+🔄 Inc 2        Alpaca data spine — STEPs 0–7 DONE (+ red-team-hardened, live-proven); STEP 8 next  ← HERE
 ⬜ Inc 3        Factors (10–15, lean)
 ⬜ Inc 4        Strategies + backtest
 ⬜ Inc 5        Bias-gate + FIRST paper submit   (needs Discord paging webhook first)
@@ -38,10 +38,20 @@ feed/SIP provenance pinned (`SUPPORTED_FEEDS` + `IS_SIP_CONSOLIDATED`) · cache 
 `.parquet.tmp` cleanup · `read_dotenv` wired into `load_settings` (live auth works) · doc honesty
 (G4 not wired; design §6 daily-label correction). Full triage + DEFER / WON'T-FIX: `docs/INC2-HARDENING-BACKLOG.md`.
 
-**NEXT = STEP 7** — `src/trading/data/universe.py` (PIT universe, DEGRADED, survivorship T2 returns
-`passed=False`); also wire the top DEFER items there (coverage_degraded G4 end-to-end; decide PIT-empties
-semantics) and a structured-logging/observability pass. Then STEP 8 (`prefix_stability` + `leak_lint`
-into `make inc2`) → final data-layer sign-off → Increment 3.
+**STEP 7 DONE** (design panel `wf_cf814eed-72a` → build, commits `12ce785`/`f032218`).
+`data/universe.py` + `universe_sources.py`: PIT universe with survivorship-cleanliness STRUCTURALLY
+UNREACHABLE (`SourceTier`+`TIER_IS_PIT` authority; forge-proof derived `survivorship_unverified`;
+`@final as_of_members` derives the verdict from the subclass tier; `survivorship_t2` always
+`passed=False`; no-hardcoded-list AST guard + content-hash). `OperatorFileUniverse` reads
+content-hashed `config/universe.yaml` (honest non-PIT). `expected_grid` wired the deferred **G4**
+coverage report (PIT-honest, DST-correct). Observability via stdlib logging. 40+ invariant tests.
+
+**NEXT = STEP 8** — `data/prefix_stability.py` (registry-wide `compute(df[:k]) == compute(df[:k+1])[:k]`
+property) + `data/leak_lint.py` (AST ban-list: `.date()`/`.floor`/`.normalize`/`get_calendar` outside
+`calendar.py`, module-scope ticker literals — **whitelist** `calendar.session_label_for_daily_bar` /
+`daily_bar_instant`), both wired into `make inc2`. Then the **comprehensive data-layer red-team**
+(incl. universe + STEP 8) before Increment 3. Remaining DEFERs in `docs/INC2-HARDENING-BACKLOG.md`
+(AlpacaTodayUniverse, real PolygonUniverse, full structured-logging unification, PIT-empties semantics).
 
 Full design + build plan: `docs/INCREMENT-2-DESIGN.md`. DONE & committed: STEP 0 deps+gate ·
 STEP 1 reliability+errors · STEP 2 bar schema+BarMeta+IEX stamp · STEP 3 calendar(side='left'
