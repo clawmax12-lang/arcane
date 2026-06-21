@@ -20,6 +20,7 @@ from trading.data import calendar
 from trading.data.bar_schema import (
     ADJUSTMENT_ALL,
     FEED_IEX,
+    UTC_DTYPE,
     BarMeta,
     validate_bars,
 )
@@ -170,6 +171,7 @@ class DataLoader(ABC):
         df = pit_guard(df, p.as_of)
         df = self._align_calendar(df, p)
         df = run_quality_gate(df)
+        df = self._canonicalize_index_tz(df)
         validated = validate_bars(df)
         self._cache.put(key, validated)
         return LoadResult(frame=ImmutableFrame(validated), meta=self._meta(p, validated))
@@ -185,6 +187,26 @@ class DataLoader(ABC):
     def _coerce_dtypes(self, df: pd.DataFrame) -> pd.DataFrame:
         present = {c: t for c, t in _CANONICAL_DTYPES.items() if c in df.columns}
         return df.astype(present)
+
+    @staticmethod
+    def _canonicalize_index_tz(df: pd.DataFrame) -> pd.DataFrame:
+        """Normalize the index + ``ingest_ts`` to the schema's exact ``datetime64[ns, UTC]`` tz.
+
+        Vendors return tz-aware UTC stamps tagged with assorted tzinfo objects — alpaca-py hands
+        back pydantic ``TzInfo(0)`` — that repr as 'UTC' and pass ``assert_utc`` but are NOT the
+        stdlib ``timezone.utc`` pandera compares against, so a correct real frame is rejected
+        ("expected datetime64[ns, UTC], got datetime64[ns, UTC]"). Fakes built with pandas'
+        canonical UTC never expose it; only a live fetch does. Normalize here, in the base, so
+        EVERY loader is immune — not just the vendor we happened to test.
+        """
+        calendar.assert_utc(df.index)  # a genuinely non-UTC index still fails closed
+        out = df.copy()
+        idx = out.index.astype(UTC_DTYPE)
+        idx.name = out.index.name
+        out.index = idx
+        if "ingest_ts" in out.columns:
+            out["ingest_ts"] = out["ingest_ts"].astype(UTC_DTYPE)
+        return out
 
     def _stamp_ingest_ts(self, df: pd.DataFrame, p: LoadParams) -> pd.DataFrame:
         if "ingest_ts" in df.columns:

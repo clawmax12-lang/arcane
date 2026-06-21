@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from pydantic import TypeAdapter
 
 from trading.data.cache import ParquetCache
 from trading.data.loader import DataLoader, LoadParams
@@ -106,3 +107,35 @@ def test_no_data_loader_subclass_overrides_load() -> None:
                     if "load" in methods:
                         offenders.append(f"{py.name}:{node.name}")
     assert not offenders, f"@final load overridden in: {offenders}"
+
+
+_PYDANTIC_DT = TypeAdapter(datetime)
+
+
+def _vendor_tz_daily(n: int = 5) -> pd.DataFrame:
+    """Like ``_raw_daily`` but with a pydantic ``TzInfo`` index, as alpaca-py returns."""
+    stamps = [_PYDANTIC_DT.validate_python(f"2024-07-0{i + 1}T00:00:00Z") for i in range(n)]
+    df = _raw_daily(n)
+    df.index = pd.DatetimeIndex(stamps, name="ts").as_unit("ns")
+    return df
+
+
+class _VendorTzLoader(DataLoader):
+    def _fetch(self, p: LoadParams) -> pd.DataFrame:
+        return _vendor_tz_daily(5)
+
+
+def test_non_canonical_vendor_utc_index_is_normalized(tmp_path: Path) -> None:
+    """A pydantic-``TzInfo`` (alpaca-py) UTC index must validate, not be rejected by pandera.
+
+    Pre-fix this raised SchemaError('expected datetime64[ns, UTC], got datetime64[ns, UTC]')
+    because the vendor tz object != stdlib timezone.utc. Regression for the STEP 6 live bug.
+    """
+    loader = _VendorTzLoader(ParquetCache(tmp_path))
+    res = loader.load(
+        symbol="AAPL", start=_START, end=_END, as_of=AsOf(datetime(2024, 7, 9, tzinfo=UTC))
+    )
+    df = res.frame.df
+    assert df.index.dtype == pd.api.types.pandas_dtype("datetime64[ns, UTC]")
+    assert str(df["ingest_ts"].dtype) == "datetime64[ns, UTC]"
+    assert len(df) == 5
