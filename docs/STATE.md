@@ -4,8 +4,8 @@
 > `docs/adr/ADR-001-foundation.md`, then run `make inc1`.** This is the canonical,
 > version-controlled state so the process is never lost to a context compaction.
 
-**As of:** 2026-06-21 · **Branch:** `build/increment-1-safety-spine` (off `main`, NOT pushed)
-**Head:** `b3b7cfb` · `make inc1` → PASS (169 tests, 97% cov, `mypy --strict`).
+**As of:** 2026-06-21 · **Branch:** `build/increment-2-data` (off `main`, NOT pushed)
+**Head:** `510df2a` · `make inc1` AND `make inc2` → PASS (222 tests, 97% cov, `mypy --strict`).
 
 ---
 
@@ -15,7 +15,7 @@
 ✅ Onboarding   5 keys verified (Alpaca paper, Anthropic, Tavily, Firecrawl+MCP, Apify)
 ✅ ADR-001      architecture decided (edge-falsification harness; paper-only; lean scope)
 ✅ Inc 1        SAFETY SPINE — built, TDD, and CERTIFIED by 3 adversarial red-team passes
-⬜ Inc 2        Alpaca data spine            ← NEXT
+🔄 Inc 2        Alpaca data spine — STEPs 0–5 of 9 DONE (structural spine); STEP 6 next  ← HERE
 ⬜ Inc 3        Factors (10–15, lean)
 ⬜ Inc 4        Strategies + backtest
 ⬜ Inc 5        Bias-gate + FIRST paper submit   (needs Discord paging webhook first)
@@ -27,18 +27,25 @@
 Honest scope (ADR-001): Inc 1–8 ≈ 55–90 focused build+test hours + a mandatory 14-day paper soak.
 **The executor is currently a NO-OP** — `broker_paper.submit()` raises NotImplementedError; nothing trades.
 
-## Exact next step (Increment 2)
+## Exact next step (Increment 2 — STEP 6 of 9)
 
-1. Add a `data` dependency-group to `pyproject.toml`: `alpaca-py, numpy, pandas, polars, duckdb,
-   pyarrow, httpx`; `uv sync`.
-2. Build `src/trading/data/loader.py` — the ADR-001 §7 `DataLoader` contract: FINAL `load()` with a
-   content-addressed Parquet cache, schema validation, staleness detection, tz/RTH alignment, and a
-   point-in-time leak guard (`ingest_ts <= as_of`). TDD; sanitize TEXTUAL sources at the loader boundary.
-3. Wire `broker_paper.submit` to a real alpaca-py paper client constructed with `paper=ALPACA_PAPER`.
-4. **Any executor entrypoint MUST call** `trading.executor.preflight.preflight(kill_switch, cfg.live_mode)`
-   before its loop (verifies the kill-switch store is writable + asserts paper-only).
-5. Define a `make inc2` gate; keep it green; then **red-team the data layer** (leak / staleness /
-   cache-poisoning) before Increment 3.
+Full design + build plan: `docs/INCREMENT-2-DESIGN.md`. DONE & committed: STEP 0 deps+gate ·
+STEP 1 reliability+errors · STEP 2 bar schema+BarMeta+IEX stamp · STEP 3 calendar(side='left'
+half-open RTH)+quality gate · STEP 4 PIT guard + content-addressed Parquet cache · STEP 5 FINAL
+`@final` `DataLoader` (structural PIT pipeline). `make inc2` green (222 tests, 97%).
+
+**NEXT = STEP 6** — `src/trading/data/alpaca_loader.py` (`AlpacaBarLoader(DataLoader)`, `_fetch`
+ONLY; verified alpaca-py 0.43.4 API in design §5): `StockHistoricalDataClient(api_key/secret from
+`trading.settings`, raw_data=False, NO paper arg)`, `StockBarsRequest(timeframe=TimeFrame(1, Day),
+feed=DataFeed.IEX, adjustment=Adjustment.ALL, sort=Sort.ASC, limit=None)`, `.df` → drop the symbol
+MultiIndex level, rename `timestamp`→`ts`, stamp feed/reliability; clamp `end <= now-16min` (IEX
+403 foot-gun); empty → `DataFetchError`; wrap `APIError`/`httpx.HTTPError` → `DataFetchError`.
+Override `_align_calendar` for daily session validity. Mock the network via a recorded fixture; put
+the one live call behind the `live` pytest marker (excluded from `make inc2`).
+Then STEP 7 (`data/universe.py` — PIT universe DEGRADED, survivorship bias-test returns
+`passed=False`) and STEP 8 (`data/prefix_stability.py` registry-wide hypothesis + `data/leak_lint.py`
+AST ban-list, both wired into `make inc2`). Then **red-team the data layer** (look-ahead /
+survivorship / staleness / cache-poisoning) before Increment 3.
 
 ## Non-negotiable invariants (do not regress)
 
