@@ -1,0 +1,12 @@
+# ARCANE risk limits — operator-tunable WITHIN the floor-of-floors.
+# Hard floors live in src/trading/risk/constants.py and CANNOT be loosened here.
+# (CLAUDE.md §8: abandon at >$30 total loss or <$20 equity; $50 paper experiment.)
+
+live_mode: false # paper only; the live gate also requires a code constant + CLI confirm
+
+per_trade_risk_usd: 1.0 # max $ risked on a single trade
+max_daily_loss_usd: 5.0 # halt new entries after this daily loss
+equity_floor_usd: 20.0 # abandon if account equity falls below this (§8.2)
+total_loss_abandon_usd: 30.0 # abandon if cumulative loss exceeds this (§8.1)
+max_position_concentration_pct: 30.0 # max % of equity in a single position
+max_consecutive_errors: 5 # abandon after this many consecutive scheduler errors (§8.3)
