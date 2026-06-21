@@ -2,12 +2,14 @@
 
 Order: **G1** finiteness (``np.isfinite``; inf/NaN → ``FinitenessError``, run BEFORE pandera
 which admits inf) → **G2** monotonic index → **G3** exact-duplicate collapse with a RAISE on a
-timestamp that has *conflicting* values (never silent pick-last) → **G4** coverage report.
+timestamp that has *conflicting* values (never silent pick-last). ``run_quality_gate`` runs
+G1→G2→G3 only.
 
-CRITICAL: an IEX coverage hole is NEVER imputed (no ffill / zero-fill). A filled hole
-fabricates a volume/illiquidity edge — the apex data leak. ``coverage_report`` only *reports*
-missing bars; the loader stamps ``coverage_degraded`` and downstream type-forbids the frame
-from a HARD gate. Re-run on every cache read.
+**G4 coverage is NOT yet wired** (STEP 7): ``coverage_report`` is a standalone reporter the
+pipeline does not call and the loader does not stamp ``coverage_degraded`` yet — tracked in
+docs/INC2-HARDENING-BACKLOG.md. What IS guaranteed today: an IEX coverage hole is NEVER imputed
+(no ffill / zero-fill) anywhere in the layer — a filled hole would fabricate a volume/illiquidity
+edge, the apex data leak. Re-run on every cache read.
 """
 
 from __future__ import annotations

@@ -1,5 +1,11 @@
 ## ARCANE Increment 2 — Data Spine Design (decision-grade, synthesis of 5 specialist tracks + ADR-001)
 
+> **STATUS (2026-06-22):** STEPs 0–6 BUILT and live-proven (loader / schema / calendar / quality /
+> pit / cache / alpaca). STEPs 7 (universe) and 8 (`prefix_stability` + `leak_lint`, described below
+> as "wired into make inc2") are **NOT yet implemented** — that wiring is pending. A red-team pass
+> (`wf_d4deb502-ad8`) hardened the built layer; open items live in `docs/INC2-HARDENING-BACKLOG.md`.
+> §6's `minute_to_session` rule is **corrected inline** below for daily-bar labels.
+
 ### 0. Mandate & invariant
 Inc-2 builds the **leak-proof-by-construction point-in-time (PIT) data layer** that feeds every downstream factor and backtest. The single load-bearing principle: **PIT/RTH/survivorship correctness is STRUCTURAL, not disciplinary.** `DataLoader.load()` is `@final` and bakes in every guard; subclasses implement only `_fetch`. A buggy or adversarial `_fetch` cannot open a leak because steps (d)–(i) re-derive everything after it returns. A look-ahead leak is a *test failure* (registry-wide prefix-stability), not a code-review judgment call. All five tracks converged on this; it is non-negotiable.
 
@@ -104,7 +110,7 @@ A contract test pins the exact `(symbol,timestamp)` MultiIndex + column set agai
 
 ### 6. Calendar / RTH / tz — `data/calendar.py` (single instance)
 
-`XNYS = get_calendar("XNYS", side="left")` constructed once, process-cached; `get_calendar` is grep/AST-banned elsewhere (same enforcement as `broker_paper paper=False`). UTC end-to-end; `assert_utc` rejects tz-naive (fail-closed). Session derived ONLY via `minute_to_session(ts, direction="previous")` — never `.date()`/`.floor("D")`/`.normalize()` (AST-banned). `as_of` → session with `direction="previous"` ALWAYS (never "next" = future leak). Daily bar visible at `as_of` only if `session_close(S) <= as_of`. RTH mask vectorized `opens[S] <= t < closes[S]`; early-closes/half-days/DST come from the calendar, never special-cased. Golden tests pin 2024-07-03 (13:00 ET early close), 2024-11-29, one spring-forward + one fall-back session.
+`XNYS = get_calendar("XNYS", side="left")` constructed once, process-cached; `get_calendar` is grep/AST-banned elsewhere (same enforcement as `broker_paper paper=False`). UTC end-to-end; `assert_utc` rejects tz-naive (fail-closed). Intraday session derived via `minute_to_session(ts, direction="previous")` — never `.date()`/`.floor("D")`/`.normalize()` (AST-banned). **CORRECTION (2026-06-22, red-team wf_d4deb502-ad8):** `minute_to_session(previous)` is WRONG for **midnight-ET daily-bar labels** — midnight precedes the open, so "previous" maps to the PRIOR session (a ~1-day look-ahead). Daily-bar labels use `calendar.session_label_for_daily_bar()` instead (fail-closed midnight-ET assertion + tz-localize, no `.date()`); the STEP-8 leak-lint `.date()` ban must whitelist that helper. `as_of` → session with `direction="previous"` ALWAYS (never "next" = future leak). Daily bar visible at `as_of` only if `session_close(S) <= as_of`. RTH mask vectorized `opens[S] <= t < closes[S]`; early-closes/half-days/DST come from the calendar, never special-cased. Golden tests pin 2024-07-03 (13:00 ET early close), 2024-11-29, one spring-forward + one fall-back session.
 
 ---
 
