@@ -116,3 +116,20 @@ def test_reconcile_removes_orphans(tmp_path: Path) -> None:
     (tmp_path / "orphan.parquet").write_bytes(b"x")  # file with no manifest row
     ParquetCache(tmp_path)  # re-open triggers reconcile
     assert not (tmp_path / "orphan.parquet").exists()
+
+
+def test_reconcile_cleans_tmp_orphans(tmp_path: Path) -> None:
+    ParquetCache(tmp_path)
+    orphan = tmp_path / "arcane-bars-zzz.parquet.tmp"  # crash-mid-put leftover
+    orphan.write_bytes(b"partial")
+    ParquetCache(tmp_path)  # re-open triggers reconcile
+    assert not orphan.exists()
+
+
+def test_put_pauses_when_disk_low(tmp_path: Path) -> None:
+    # ADR-F7: with the free-disk floor set above any real free space, put() skips the write.
+    cache = ParquetCache(tmp_path, min_free_bytes=10**18)
+    cache.put("k1", _bars(2))
+    assert cache.get("k1") is None  # not stored
+    assert not (tmp_path / "k1.parquet").exists()
+    assert not (tmp_path / "k1.parquet.tmp").exists()  # and no tmp left behind

@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
+import shutil
 import sqlite3
 import time
 from collections.abc import Callable, Mapping
@@ -23,7 +25,12 @@ import pandas as pd
 
 from trading.data.errors import CacheError
 
+logger = logging.getLogger(__name__)
+
 MAX_CACHE_BYTES: Final[int] = 512 * 1024 * 1024
+# ADR-F7: pause caching when the volume is nearly full so the cache can never CAUSE a
+# disk-exhaustion Murphy event. Caching is an optimization; skipping a write is always safe.
+MIN_FREE_DISK_BYTES: Final[int] = 1024 * 1024 * 1024  # 1 GiB
 
 
 def cache_key(params: Mapping[str, Any]) -> str:
@@ -40,10 +47,12 @@ class ParquetCache:
         directory: Path,
         *,
         max_bytes: int = MAX_CACHE_BYTES,
+        min_free_bytes: int = MIN_FREE_DISK_BYTES,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._dir = directory
         self._max = max_bytes
+        self._min_free = min_free_bytes
         self._clock = clock
         self._dir.mkdir(parents=True, exist_ok=True)
         self._manifest = self._dir / "manifest.sqlite"
@@ -69,7 +78,20 @@ class ParquetCache:
         return df
 
     def put(self, key: str, df: pd.DataFrame) -> None:
-        """Atomically store a frame; refuse an oversize object; evict LRU under the ceiling."""
+        """Atomically store a frame; refuse an oversize object; evict LRU under the ceiling.
+
+        ADR-F7: if free disk is below the floor, PAUSE caching (skip the write + warn) — never let
+        the cache be the cause of a disk-exhaustion event. A skipped write just means a re-fetch.
+        """
+        free = shutil.disk_usage(self._dir).free
+        if free < self._min_free:
+            logger.warning(
+                "cache write paused for %s: free disk %d B < floor %d B (ADR-F7)",
+                key,
+                free,
+                self._min_free,
+            )
+            return
         tmp = self._dir / f"{key}.parquet.tmp"
         df.to_parquet(tmp, engine="pyarrow", index=True)
         size = tmp.stat().st_size
@@ -126,6 +148,8 @@ class ParquetCache:
         for f in self._dir.glob("*.parquet"):
             if f.stem not in known:
                 f.unlink(missing_ok=True)
+        for tmp in self._dir.glob("*.parquet.tmp"):  # crash-mid-put orphans (.parquet glob misses)
+            tmp.unlink(missing_ok=True)
 
     def _evict(self, conn: sqlite3.Connection) -> None:
         total = int(conn.execute("SELECT COALESCE(SUM(bytes), 0) FROM entries").fetchone()[0])
