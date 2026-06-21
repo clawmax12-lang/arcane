@@ -3,7 +3,8 @@
 Daily bars only (v1). ``feed=IEX`` and ``adjustment=ALL`` are EXPLICIT (never None → no silent
 SIP-escalation / unadjusted-prices). Empty results or vendor/transport errors fail closed to
 ``DataFetchError``. The real daily-bar timestamp is midnight-ET at MICROSECOND resolution; we
-convert to ns (the schema's unit), keep only trading-session bars, and stamp ``ingest_ts`` as
+convert to ns (the schema's unit), assert every bar is a midnight-ET XNYS session instant (fail
+closed — a wrong-session vintage would be a look-ahead leak), and stamp ``ingest_ts`` as
 ``session_close + publish_lag`` (DST-safe via the calendar). The base re-derives every other
 guard (dtype coercion, PIT drop, quality gate, schema), so this stays a thin vendor adapter.
 """
@@ -14,9 +15,8 @@ from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
-import httpx
-import numpy as np
 import pandas as pd
+import requests
 from alpaca.common.enums import Sort
 from alpaca.common.exceptions import APIError
 from alpaca.data.enums import Adjustment, DataFeed
@@ -29,7 +29,6 @@ from trading.data.errors import DataFetchError
 from trading.data.loader import DataLoader, LoadParams
 from trading.settings import Settings, load_settings
 
-_DISPLAY_TZ = "America/New_York"
 _BAR_COLUMNS = ["open", "high", "low", "close", "volume", "trade_count", "vwap"]
 
 
@@ -78,7 +77,7 @@ class AlpacaBarLoader(DataLoader):
         )
         try:
             barset = self._get_client().get_stock_bars(req)
-        except (APIError, httpx.HTTPError) as exc:
+        except (APIError, requests.exceptions.RequestException) as exc:
             raise DataFetchError(f"alpaca fetch failed for {p.symbol}: {exc}") from exc
 
         df = barset.df
@@ -90,19 +89,22 @@ class AlpacaBarLoader(DataLoader):
         df.index = pd.DatetimeIndex(df.index).as_unit("ns")  # real data is us; schema wants ns
         df.index.name = "ts"
         df = df[_BAR_COLUMNS]
-        return df[self._session_mask(df.index)]
+        # Fail closed on vendor-convention drift: every daily bar must be a midnight-ET XNYS
+        # session instant. We ASSERT (never silently drop) so a wrong-session vintage — which would
+        # be a look-ahead leak — is loud. Raises CalendarError on a non-midnight or non-session bar.
+        for ts in df.index:
+            calendar.session_label_for_daily_bar(ts)
+        return df
 
     def _stamp_ingest_ts(self, df: pd.DataFrame, p: LoadParams) -> pd.DataFrame:
         # A daily bar becomes visible at its session close (+ publish lag), DST-safe via calendar.
-        et_dates = df.index.tz_convert(_DISPLAY_TZ)
         closes = [
-            calendar.session_close(pd.Timestamp(d.date())) + self.PUBLISH_LAG for d in et_dates
+            calendar.session_close(calendar.session_label_for_daily_bar(ts)) + self.PUBLISH_LAG
+            for ts in df.index
         ]
         out = df.copy()
-        out["ingest_ts"] = pd.DatetimeIndex(closes).as_unit("ns")
+        ingest = pd.DatetimeIndex(closes).as_unit("ns")
+        if ingest.tz is None:  # defensive: an empty list yields tz-naive; keep the column tz-aware
+            ingest = ingest.tz_localize("UTC")
+        out["ingest_ts"] = ingest
         return out
-
-    @staticmethod
-    def _session_mask(index: pd.DatetimeIndex) -> np.ndarray:
-        et = index.tz_convert(_DISPLAY_TZ)
-        return np.array([calendar.XNYS.is_session(pd.Timestamp(d.date())) for d in et], dtype=bool)

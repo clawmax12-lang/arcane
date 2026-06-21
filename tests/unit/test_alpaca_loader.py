@@ -3,12 +3,12 @@
 The network is faked via an injected ``client`` (and a frozen ``now_fn``); the real fetch is
 exercised by ``test_live_iex_daily_fetch_smoke`` behind ``@pytest.mark.live``, which the
 gate excludes via ``addopts = -m 'not live'``. We assert the vendor adapter's guarantees:
-the symbol MultiIndex level is dropped, µs timestamps become ns, only trading sessions
-survive, ``ingest_ts`` is the DST-safe ``session_close + publish_lag``, the request is
-EXPLICITLY IEX + adjustment=ALL (no silent SIP escalation / unadjusted prices), the window
-end is clamped to ``now-16min`` (the IEX free-plan 403 foot-gun), and every failure path
-(empty, None, vendor error, transport error, non-daily timeframe) fails closed to
-``DataFetchError``.
+the symbol MultiIndex level is dropped, µs timestamps become ns, every bar is asserted to be a
+midnight-ET session instant (fail closed), ``ingest_ts`` is the DST-safe ``session_close +
+publish_lag``, the request is EXPLICITLY IEX + adjustment=ALL (no silent SIP escalation /
+unadjusted prices), the window end is clamped to ``now-16min`` (the IEX free-plan 403 foot-gun),
+and every failure path (empty, None, vendor error, transport error, non-daily timeframe,
+non-session / non-midnight bar) fails closed to a typed ``DataError``.
 """
 
 from __future__ import annotations
@@ -16,9 +16,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx
 import pandas as pd
 import pytest
+import requests
 from alpaca.common.enums import Sort
 from alpaca.common.exceptions import APIError
 from alpaca.data.enums import Adjustment, DataFeed
@@ -28,7 +28,7 @@ from trading.data import calendar
 from trading.data.alpaca_loader import AlpacaBarLoader
 from trading.data.bar_schema import FEED_IEX
 from trading.data.cache import ParquetCache
-from trading.data.errors import DataFetchError
+from trading.data.errors import CalendarError, DataFetchError
 from trading.data.pit import AsOf
 from trading.data.reliability import Reliability
 
@@ -95,12 +95,11 @@ def _loader(
     return AlpacaBarLoader(ParquetCache(cache_dir), client=client, now_fn=lambda: now)
 
 
-def test_happy_path_drops_symbol_and_filters_sessions(tmp_path: Path) -> None:
-    # Wed/Thu/Fri are sessions; Sat 2024-01-06 is not and must be dropped.
-    df = _alpaca_df(["2024-01-03", "2024-01-04", "2024-01-05", "2024-01-06"])
+def test_happy_path_drops_symbol_and_converts(tmp_path: Path) -> None:
+    df = _alpaca_df(["2024-01-03", "2024-01-04", "2024-01-05"])  # three real XNYS sessions
     res = _loader(tmp_path, df=df).load(symbol="AAPL", start=_START, end=_END, as_of=_AS_OF)
     out = res.frame.df
-    assert len(out) == 3  # Saturday filtered out
+    assert len(out) == 3
     assert out.index.name == "ts"
     assert str(out.index.dtype) == "datetime64[ns, UTC]"  # µs -> ns conversion happened
     assert list(out.columns) == _FINAL_COLUMNS
@@ -175,9 +174,29 @@ def test_vendor_api_error_wrapped(tmp_path: Path) -> None:
 
 
 def test_transport_error_wrapped(tmp_path: Path) -> None:
-    loader = _loader(tmp_path, raises=httpx.ConnectError("dns failure"))
+    # alpaca-py 0.43.4 uses the `requests` transport — a live network failure raises
+    # requests.exceptions.ConnectionError, which must fail closed to DataFetchError.
+    loader = _loader(tmp_path, raises=requests.exceptions.ConnectionError("dns failure"))
     with pytest.raises(DataFetchError, match="alpaca fetch failed"):
         loader.load(symbol="AAPL", start=_START, end=_END, as_of=_AS_OF)
+
+
+def test_non_session_bar_fails_closed(tmp_path: Path) -> None:
+    # A weekend bar must NOT be silently dropped — it must fail closed (vendor anomaly).
+    loader = _loader(tmp_path, df=_alpaca_df(["2024-01-03", "2024-01-06"]))  # 01-06 = Saturday
+    with pytest.raises(CalendarError, match="non-session"):
+        loader.load(symbol="AAPL", start=_START, end=_END, as_of=_AS_OF)
+
+
+def test_non_midnight_bar_fails_closed(tmp_path: Path) -> None:
+    # A daily bar not stamped at midnight-ET signals vendor-convention drift -> fail closed.
+    df = _alpaca_df(["2024-01-03"])
+    bad = pd.Timestamp("2024-01-03 12:00", tz="America/New_York").tz_convert("UTC")
+    df.index = pd.MultiIndex.from_arrays(
+        [["AAPL"], pd.DatetimeIndex([bad]).as_unit("us")], names=["symbol", "timestamp"]
+    )
+    with pytest.raises(CalendarError, match="midnight-ET"):
+        _loader(tmp_path, df=df).load(symbol="AAPL", start=_START, end=_END, as_of=_AS_OF)
 
 
 @pytest.mark.live

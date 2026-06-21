@@ -63,3 +63,20 @@ def test_to_display_converts_to_ny() -> None:
 
 def test_empty_index_rth_mask() -> None:
     assert cal.rth_mask(_utc()).tolist() == []
+
+
+def test_session_label_for_daily_bar_midnight_et() -> None:
+    # 2024-01-02 midnight EST = 05:00 UTC -> session label 2024-01-02 (a real session).
+    ts = pd.Timestamp("2024-01-02 05:00", tz="UTC")
+    assert cal.session_label_for_daily_bar(ts) == pd.Timestamp("2024-01-02")
+
+
+def test_session_label_for_daily_bar_rejects_non_midnight() -> None:
+    with pytest.raises(CalendarError, match="midnight-ET"):
+        cal.session_label_for_daily_bar(pd.Timestamp("2024-01-02 14:30", tz="UTC"))
+
+
+def test_session_label_for_daily_bar_rejects_non_session() -> None:
+    # 2024-01-06 is a Saturday: midnight ET = 05:00 UTC, but not an XNYS session.
+    with pytest.raises(CalendarError, match="non-session"):
+        cal.session_label_for_daily_bar(pd.Timestamp("2024-01-06 05:00", tz="UTC"))

@@ -44,6 +44,26 @@ def session_close(session: pd.Timestamp) -> pd.Timestamp:
     return XNYS.session_close(session)
 
 
+def session_label_for_daily_bar(ts: pd.Timestamp) -> pd.Timestamp:
+    """Map a daily bar's UTC instant to its XNYS session label, FAIL-CLOSED.
+
+    Alpaca stamps a daily bar at MIDNIGHT-ET. We assert that convention explicitly (so a future
+    vendor drift is loud, not a silent wrong-session vintage = look-ahead leak) and that the day is
+    a real session, then return the tz-naive midnight label exchange_calendars expects. No
+    ``.date()``/``.floor``/``.normalize`` — a verified-midnight instant, tz-localized to naive,
+    ALREADY is the label — so daily-bar session derivation stays inside this calendar authority.
+    NOTE: ``minute_to_session`` is WRONG here — midnight-ET precedes the open, so 'previous' maps to
+    the prior session (a ~1-day look-ahead). Hence the explicit midnight assertion instead.
+    """
+    et = ts.tz_convert(DISPLAY_TZ)
+    if (et.hour, et.minute, et.second, et.microsecond, et.nanosecond) != (0, 0, 0, 0, 0):
+        raise CalendarError(f"daily bar {ts!r} is not midnight-ET (got {et!r}); vendor drift")
+    label = et.tz_localize(None)
+    if not XNYS.is_session(label):
+        raise CalendarError(f"daily bar {ts!r} maps to a non-session day {label!r}")
+    return label
+
+
 def daily_bar_visible(session: pd.Timestamp, as_of_ts: pd.Timestamp) -> bool:
     """A daily bar is visible only once its session has CLOSED at or before ``as_of``."""
     return bool(XNYS.session_close(session) <= as_of_ts)
