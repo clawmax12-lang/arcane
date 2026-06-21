@@ -16,8 +16,10 @@ __pycache__/
 node_modules/
 
 # ── Runtime data & logs ──
-data/
-logs/
+# NOTE: anchored to repo root. An unanchored `data/` matched src/trading/data/
+# and silently untracked the entire data layer. Keep these leading slashes.
+/data/
+/logs/
 *.log
 
 # ── Firecrawl ──

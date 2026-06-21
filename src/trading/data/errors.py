@@ -1,0 +1,57 @@
+"""Typed, fail-closed error taxonomy for the data layer (all ``ArcaneError`` subclasses).
+
+Mirrors the Increment-1 idiom: every failure is a specific, catchable exception, and the
+default on any uncertainty is to RAISE (fail closed) rather than return partial/empty data.
+"""
+
+from __future__ import annotations
+
+from trading.risk.errors import ArcaneError
+
+
+class DataError(ArcaneError):
+    """Base class for all data-layer errors."""
+
+
+class DataFetchError(DataError):
+    """A vendor/network fetch failed or returned empty for the requested window."""
+
+
+class SchemaError(DataError):
+    """A frame failed schema/dtype validation."""
+
+
+class FinitenessError(DataError):
+    """A frame contains non-finite (NaN/inf) values where finite numbers are required."""
+
+
+class CalendarError(DataError):
+    """A timestamp is tz-naive/non-UTC, or a session/RTH computation is invalid."""
+
+
+class QualityError(DataError):
+    """A frame failed a data-quality check (monotonicity, duplicates, OHLC sanity)."""
+
+
+class DuplicateBarError(QualityError):
+    """A timestamp has conflicting duplicate bars (differing values) — never silently picked."""
+
+
+class FeedMismatchError(DataError):
+    """A bar's feed tag does not match the requested feed (e.g. IEX served for a SIP request)."""
+
+
+class PITViolationError(DataError):
+    """A point-in-time invariant was violated (e.g. ingest_ts > as_of)."""
+
+
+class RestatedSourceError(DataError):
+    """A restated/STRUCTURED source did not supply the required per-row ingest_ts."""
+
+
+class CacheError(DataError):
+    """The content-addressed cache could not store or serve an entry safely."""
+
+
+class ReliabilityError(DataError):
+    """A non-gateable (TEXTUAL/DERIVED) frame reached a runtime gate (CLAUDE.md §4.3)."""
