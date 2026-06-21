@@ -55,3 +55,31 @@ class CacheError(DataError):
 
 class ReliabilityError(DataError):
     """A non-gateable (TEXTUAL/DERIVED) frame reached a runtime gate (CLAUDE.md §4.3)."""
+
+
+class UniverseError(DataError):
+    """Base for all universe-layer (STEP 7) failures."""
+
+
+class UniverseConfigError(UniverseError):
+    """Universe config is missing, unreadable, not a mapping, empty, or has a bad symbol."""
+
+
+class UniverseEmptyError(UniverseError):
+    """The resolved membership set is empty — never returned as a valid snapshot (fail-closed)."""
+
+
+class NonPITMembershipError(UniverseError):
+    """A UniverseMeta claimed survivorship-clean for a non-PIT source tier (forge-proof breach)."""
+
+
+class HardcodedUniverseError(UniverseError):
+    """A member set lacked a content-addressed artifact hash (an inline-literal smell)."""
+
+
+class RestatedMembershipError(UniverseError):
+    """A PIT source supplied membership with no real vintage (a flat set relabeled as PIT)."""
+
+
+class UniverseSourceError(UniverseError):
+    """An unmapped/unknown SourceTier reached the PIT whitelist (fail-closed)."""

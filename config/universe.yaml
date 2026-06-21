@@ -1,0 +1,20 @@
+# Operator-curated watchlist (Increment 2 STEP 7).
+#
+# HONEST NON-PIT: this is NOT survivorship-clean and NOT point-in-time. It is an explicit,
+# version-controlled, content-hashed list — the opposite of a hardcoded code literal or a moving
+# vendor snapshot. Because it has no per-(symbol,date) membership history, bias-test T2 fails
+# closed (passed=False) and survivorship_unverified=True. A real PIT universe needs Polygon
+# (deferred). Editing this file changes the universe_hash → backtests re-bind deterministically.
+#
+# Scope: a handful of liquid US large-caps for the $50/v1 experiment (ADR-001 §5).
+symbols:
+  - AAPL
+  - MSFT
+  - NVDA
+  - AMZN
+  - GOOGL
+  - META
+  - JPM
+  - XOM
+  - JNJ
+  - PG
