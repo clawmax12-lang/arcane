@@ -5,7 +5,7 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-21 · **Branch:** `build/increment-2-data` (off `main`, NOT pushed)
-**Head:** `510df2a` · `make inc1` AND `make inc2` → PASS (222 tests, 97% cov, `mypy --strict`).
+**Head:** `945557c` · `make inc1` AND `make inc2` → PASS (237 tests, 1 `live` deselected, 96.65% cov, `mypy --strict`).
 
 ---
 
@@ -15,7 +15,7 @@
 ✅ Onboarding   5 keys verified (Alpaca paper, Anthropic, Tavily, Firecrawl+MCP, Apify)
 ✅ ADR-001      architecture decided (edge-falsification harness; paper-only; lean scope)
 ✅ Inc 1        SAFETY SPINE — built, TDD, and CERTIFIED by 3 adversarial red-team passes
-🔄 Inc 2        Alpaca data spine — STEPs 0–5 of 9 DONE (structural spine); STEP 6 next  ← HERE
+🔄 Inc 2        Alpaca data spine — STEPs 0–6 of 9 DONE (real IEX fetch + tests); STEP 7 next  ← HERE
 ⬜ Inc 3        Factors (10–15, lean)
 ⬜ Inc 4        Strategies + backtest
 ⬜ Inc 5        Bias-gate + FIRST paper submit   (needs Discord paging webhook first)
@@ -27,25 +27,33 @@
 Honest scope (ADR-001): Inc 1–8 ≈ 55–90 focused build+test hours + a mandatory 14-day paper soak.
 **The executor is currently a NO-OP** — `broker_paper.submit()` raises NotImplementedError; nothing trades.
 
-## Exact next step (Increment 2 — STEP 6 of 9)
+## Exact next step (Increment 2 — STEP 7 of 9)
 
 Full design + build plan: `docs/INCREMENT-2-DESIGN.md`. DONE & committed: STEP 0 deps+gate ·
 STEP 1 reliability+errors · STEP 2 bar schema+BarMeta+IEX stamp · STEP 3 calendar(side='left'
 half-open RTH)+quality gate · STEP 4 PIT guard + content-addressed Parquet cache · STEP 5 FINAL
-`@final` `DataLoader` (structural PIT pipeline). `make inc2` green (222 tests, 97%).
+`@final` `DataLoader` · STEP 6 `AlpacaBarLoader` (real IEX daily `_fetch` + contract tests,
+network faked; one `live` smoke behind `pytest -m live`).
 
-**NEXT = STEP 6** — `src/trading/data/alpaca_loader.py` (`AlpacaBarLoader(DataLoader)`, `_fetch`
-ONLY; verified alpaca-py 0.43.4 API in design §5): `StockHistoricalDataClient(api_key/secret from
-`trading.settings`, raw_data=False, NO paper arg)`, `StockBarsRequest(timeframe=TimeFrame(1, Day),
-feed=DataFeed.IEX, adjustment=Adjustment.ALL, sort=Sort.ASC, limit=None)`, `.df` → drop the symbol
-MultiIndex level, rename `timestamp`→`ts`, stamp feed/reliability; clamp `end <= now-16min` (IEX
-403 foot-gun); empty → `DataFetchError`; wrap `APIError`/`httpx.HTTPError` → `DataFetchError`.
-Override `_align_calendar` for daily session validity. Mock the network via a recorded fixture; put
-the one live call behind the `live` pytest marker (excluded from `make inc2`).
-Then STEP 7 (`data/universe.py` — PIT universe DEGRADED, survivorship bias-test returns
-`passed=False`) and STEP 8 (`data/prefix_stability.py` registry-wide hypothesis + `data/leak_lint.py`
-AST ban-list, both wired into `make inc2`). Then **red-team the data layer** (look-ahead /
-survivorship / staleness / cache-poisoning) before Increment 3.
+⚠️ FIXED THIS SESSION (commit `d917b25`): `.gitignore` line 19 was an UNANCHORED `data/` that
+matched `src/trading/data/` and silently UNTRACKED the entire data layer — the STEP 2–5
+`feat(data)` commits contained ONLY test files, zero implementation. A `git clean -fdx` or a
+fresh clone would have destroyed all of Inc-2 while `make inc2` stayed green on the on-disk
+files. Now anchored to `/data/` + `/logs/`; all 11 `src/trading/data/*.py` (incl. the Inc-1
+`sanitize.py`) are tracked (rescue `d917b25`, STEP 6 tests `945557c`). **If you ever see a green
+gate but `git ls-files` is missing a source dir again — this is the footgun; check `.gitignore`.**
+
+**NEXT = STEP 7** — `src/trading/data/universe.py`: a point-in-time universe whose survivorship
+bias-test returns `passed=False` (we have no PIT membership history → the universe is DEGRADED,
+never silently survivorship-clean). Then STEP 8 (`data/prefix_stability.py` registry-wide
+hypothesis + `data/leak_lint.py` AST ban-list — incl. banning `xcals.get_calendar` outside
+`calendar.py`, per its docstring — both wired into `make inc2`). Then **red-team the data layer**
+(look-ahead / survivorship / staleness / cache-poisoning) before Increment 3.
+
+Data-layer red-team backlog (found, not yet hardened):
+- alpaca-py `StockBarsRequest` STRIPS tzinfo (stores naive UTC wall-clock). `_fetch` passes UTC
+  today so it is safe, but a non-UTC tz-aware `start`/`end` would be silently mis-clamped.
+  Consider asserting/converting the window to UTC in `LoadParams.build` or `_fetch`.
 
 ## Non-negotiable invariants (do not regress)
 
