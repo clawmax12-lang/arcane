@@ -69,6 +69,17 @@ def daily_bar_visible(session: pd.Timestamp, as_of_ts: pd.Timestamp) -> bool:
     return bool(XNYS.session_close(session) <= as_of_ts)
 
 
+def sessions_in_range(start: pd.Timestamp, end: pd.Timestamp) -> pd.DatetimeIndex:
+    """XNYS session labels (tz-naive midnight) in the inclusive ``[start, end]`` range."""
+    return XNYS.sessions_in_range(start, end)
+
+
+def daily_bar_instant(session: pd.Timestamp) -> pd.Timestamp:
+    """The UTC instant a daily bar is stamped at (midnight-ET) — inverse of
+    ``session_label_for_daily_bar``. DST-safe (winter 05:00Z, summer 04:00Z)."""
+    return pd.Timestamp(session).tz_localize(DISPLAY_TZ).tz_convert("UTC").as_unit("ns")
+
+
 def rth_mask(index: pd.DatetimeIndex) -> npt.NDArray[np.bool_]:
     """Vectorized mask: True where the UTC minute is a trading minute (half-open [open, close))."""
     assert_utc(index)

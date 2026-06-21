@@ -80,3 +80,22 @@ def test_session_label_for_daily_bar_rejects_non_session() -> None:
     # 2024-01-06 is a Saturday: midnight ET = 05:00 UTC, but not an XNYS session.
     with pytest.raises(CalendarError, match="non-session"):
         cal.session_label_for_daily_bar(pd.Timestamp("2024-01-06 05:00", tz="UTC"))
+
+
+def test_daily_bar_instant_dst() -> None:
+    # Winter (EST) midnight-ET = 05:00 UTC; summer (EDT) = 04:00 UTC. Matches the live loader.
+    winter = cal.daily_bar_instant(pd.Timestamp("2024-01-02"))
+    summer = cal.daily_bar_instant(pd.Timestamp("2024-07-01"))
+    assert winter == pd.Timestamp("2024-01-02 05:00", tz="UTC")  # EST
+    assert summer == pd.Timestamp("2024-07-01 04:00", tz="UTC")  # EDT
+
+
+def test_daily_bar_instant_roundtrips_with_session_label() -> None:
+    inst = cal.daily_bar_instant(pd.Timestamp("2024-07-01"))
+    assert cal.session_label_for_daily_bar(inst) == pd.Timestamp("2024-07-01")
+
+
+def test_sessions_in_range_excludes_holiday() -> None:
+    ss = cal.sessions_in_range(pd.Timestamp("2024-07-01"), pd.Timestamp("2024-07-05"))
+    assert pd.Timestamp("2024-07-04") not in ss  # Independence Day holiday
+    assert pd.Timestamp("2024-07-05") in ss

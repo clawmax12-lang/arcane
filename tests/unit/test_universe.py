@@ -25,6 +25,7 @@ from trading.data.errors import (
     UniverseEmptyError,
 )
 from trading.data.pit import AsOf
+from trading.data.quality import coverage_report
 from trading.data.reliability import Reliability
 from trading.data.universe import (
     TIER_IS_PIT,
@@ -32,6 +33,8 @@ from trading.data.universe import (
     PITUniverse,
     SourceTier,
     UniverseMeta,
+    UniverseSnapshot,
+    expected_grid,
     is_pit,
     survivorship_t2,
 )
@@ -276,3 +279,51 @@ def test_snapshot_symbols_immutable_and_sorted() -> None:
     assert snap.sorted_symbols() == ("AAPL", "MSFT")
     assert snap.contains("AAPL") and not snap.contains("TSLA")
     assert snap.as_of == _AS_OF.ts
+
+
+# --- expected_grid / G4 coverage wiring (Commit B) ---
+
+
+def _grid_snap(as_of: AsOf) -> UniverseSnapshot:
+    return _FakeUniverse(symbols=frozenset({"AAPL", "MSFT"})).as_of_members(as_of=as_of)
+
+
+def test_expected_grid_dst_golden() -> None:
+    snap = _grid_snap(AsOf(datetime(2024, 7, 31, tzinfo=UTC)))
+    grid = expected_grid(snap, start=pd.Timestamp("2024-01-01"), end=pd.Timestamp("2024-07-31"))
+    inst = grid.expected_daily_instants("AAPL")
+    assert pd.Timestamp("2024-01-02 05:00", tz="UTC") in inst  # EST midnight
+    assert pd.Timestamp("2024-07-01 04:00", tz="UTC") in inst  # EDT midnight (DST-correct)
+
+
+def test_expected_grid_clamps_to_visible() -> None:
+    # as_of mid-session (2024-07-03 12:00Z): that day's bar is not yet visible (closes 17:00Z).
+    snap = _grid_snap(AsOf(datetime(2024, 7, 3, 12, tzinfo=UTC)))
+    grid = expected_grid(snap, start=pd.Timestamp("2024-07-01"), end=pd.Timestamp("2024-07-10"))
+    assert pd.Timestamp("2024-07-02") in grid.sessions
+    assert pd.Timestamp("2024-07-03") not in grid.sessions  # PIT-honest: not yet closed at as_of
+
+
+def test_expected_grid_carries_survivorship_bias_flag() -> None:
+    snap = _grid_snap(AsOf(datetime(2024, 7, 10, tzinfo=UTC)))
+    grid = expected_grid(snap, start=pd.Timestamp("2024-07-01"), end=pd.Timestamp("2024-07-09"))
+    assert grid.coverage_is_survivorship_biased is True  # mirrors the non-PIT snapshot
+
+
+def test_expected_daily_instants_unknown_symbol() -> None:
+    snap = _grid_snap(AsOf(datetime(2024, 7, 10, tzinfo=UTC)))
+    grid = expected_grid(snap, start=pd.Timestamp("2024-07-01"), end=pd.Timestamp("2024-07-09"))
+    with pytest.raises(KeyError):
+        grid.expected_daily_instants("TSLA")
+
+
+def test_g4_coverage_report_reports_holes_without_imputation() -> None:
+    snap = _grid_snap(AsOf(datetime(2024, 7, 31, tzinfo=UTC)))
+    grid = expected_grid(snap, start=pd.Timestamp("2024-07-01"), end=pd.Timestamp("2024-07-10"))
+    expected = grid.expected_daily_instants("AAPL")
+    actual = expected.delete(1)  # punch one hole
+    rep = coverage_report(actual, expected)
+    assert rep.expected == len(expected)
+    assert rep.present == len(expected) - 1
+    assert rep.missing == 1
+    assert rep.coverage_degraded is True  # reported, never imputed

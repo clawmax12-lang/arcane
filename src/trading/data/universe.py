@@ -242,3 +242,43 @@ def survivorship_t2(meta: UniverseMeta) -> BiasTestResult:
         meta.universe_hash[:8],
     )
     return result
+
+
+@dataclass(frozen=True, slots=True)
+class ExpectedGrid:
+    """The expected (symbol x session) grid for the quality-gate G4 coverage report.
+
+    Built from the calendar authority ONLY and clamped to PIT visibility, so it never expects a bar
+    from a session that had not closed at ``as_of``. Carries the snapshot's survivorship flag so
+    coverage of a biased universe is itself stamped biased. NEVER imputes — it only states what
+    SHOULD exist; ``quality.coverage_report`` consumes it.
+    """
+
+    sessions: pd.DatetimeIndex
+    symbols: tuple[str, ...]
+    coverage_is_survivorship_biased: bool
+
+    def expected_daily_instants(self, symbol: str) -> pd.DatetimeIndex:
+        """Midnight-ET->UTC instants a daily-bar loader stamps for ``symbol`` (DST-safe)."""
+        if symbol not in self.symbols:
+            raise KeyError(f"{symbol!r} is not in this universe grid")
+        return pd.DatetimeIndex([calendar.daily_bar_instant(s) for s in self.sessions], name="ts")
+
+
+def expected_grid(
+    snapshot: UniverseSnapshot, *, start: pd.Timestamp, end: pd.Timestamp
+) -> ExpectedGrid:
+    """Build the PIT-honest expected grid for ``snapshot`` over ``[start, end]`` (closes G4).
+
+    Only sessions whose close is at/before ``snapshot.as_of`` are included — the grid can never ask
+    coverage to expect a bar not yet published at the point-in-time the snapshot is dated to.
+    """
+    as_of = pd.Timestamp(snapshot.as_of)
+    visible = [
+        s for s in calendar.sessions_in_range(start, end) if calendar.daily_bar_visible(s, as_of)
+    ]
+    return ExpectedGrid(
+        sessions=pd.DatetimeIndex(visible),
+        symbols=snapshot.sorted_symbols(),
+        coverage_is_survivorship_biased=snapshot.meta.survivorship_unverified,
+    )
