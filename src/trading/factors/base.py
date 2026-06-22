@@ -44,6 +44,8 @@ class AlphaFactor(ABC):
 
     #: Unique registry id.
     id: ClassVar[str]
+    #: Factor family (taxonomy / reporting): momentum | meanrev | volatility | volume | range.
+    family: ClassVar[str]
     #: Canonical economic rationale (non-empty).
     rationale: ClassVar[str]
     #: Strictly-trailing z-score lookback.
