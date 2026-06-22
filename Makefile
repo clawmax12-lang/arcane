@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := check
 PY := uv run
 
-.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 leak-lint clean clean-cache
+.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 inc4 leak-lint clean clean-cache
 
 setup:
 	uv sync
@@ -65,3 +65,15 @@ inc3:
 	$(PY) mypy
 	$(PY) pytest --cov=trading --cov-report=term-missing --cov-fail-under=85 -q
 	@echo "Increment 3 gate: PASS"
+
+# Increment 4 gate: the strategy + walk-forward-backtest layer must clear ALL of these. leak-lint now
+# scans the data AND factor AND backtest layers; the engine causality property (PositionView +
+# RealizedView prefix-stability), frame/value-adequacy, and the perfect-foresight off-by-one
+# must-fail canary run inside the pytest suite (tests/unit/test_backtest_engine.py).
+inc4:
+	$(PY) ruff check src tests
+	$(PY) black --check src tests
+	$(PY) python -m trading.data.leak_lint src/trading/data src/trading/factors src/trading/backtest
+	$(PY) mypy
+	$(PY) pytest --cov=trading --cov-report=term-missing --cov-fail-under=85 -q
+	@echo "Increment 4 gate: PASS"
