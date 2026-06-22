@@ -55,8 +55,13 @@ class CostModel(BaseModel):
         """Total one-way cost in bps after the (>= 1) stress scale."""
         return (self.commission_bps + self.half_spread_bps + self.slippage_bps) * self.cost_scale
 
-    def per_bar_cost(self, position: pd.Series) -> pd.Series:
-        """Per-bar cost (fraction of capital) from |Δposition|; fail-closed on a non-finite pos."""
+    def turnover(self, position: pd.Series) -> pd.Series:
+        """Per-bar turnover |position_t - position_{t-1}| (the first bar enters from flat, prior 0).
+
+        Fail-closed on a non-finite position (the GUARD-B idiom). Uses an explicit numpy prior so
+        the from-flat entry is included WITHOUT the banned ``.fillna``; reads only the trailing
+        position, so it is prefix-stable.
+        """
         values = position.to_numpy(dtype="float64", na_value=np.nan)
         if values.size == 0:
             return pd.Series([], index=position.index, dtype="float64")
@@ -68,6 +73,8 @@ class CostModel(BaseModel):
         prior = np.empty_like(values)
         prior[0] = 0.0  # the first bar enters from flat -> its entry is charged
         prior[1:] = values[:-1]
-        turnover = np.abs(values - prior)
-        cost = self.total_bps * _BPS * turnover
-        return pd.Series(cost, index=position.index, dtype="float64")
+        return pd.Series(np.abs(values - prior), index=position.index, dtype="float64")
+
+    def per_bar_cost(self, position: pd.Series) -> pd.Series:
+        """Per-bar cost (fraction of capital) = total_bps * 1e-4 * turnover (fail-closed)."""
+        return self.total_bps * _BPS * self.turnover(position)
