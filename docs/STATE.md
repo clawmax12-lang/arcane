@@ -5,30 +5,50 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-22 · **Branch:** `build/increment-3-factors` — pushed; `main` fast-forwarded to it on GitHub.
-**Head:** `51faaac` · `make inc1` AND `make inc2` AND `make inc3` → PASS (97.37% cov, `mypy --strict`, leak-lint clean over data + factors). **✅ INCREMENT 2 SEALED** (head `22cc76f`). **🔨 INCREMENT 3 — BUILD COMPLETE (clusters 1–5), red-team in progress.**
+**Head:** `9914b86` (last code commit; this STATE+backlog seal commit sits on top) · `make inc1` AND `make inc2` AND `make inc3` → PASS (97.30% cov, `mypy --strict`, leak-lint clean over data + factors). **✅ INCREMENT 2 SEALED** (head `22cc76f`). **✅ INCREMENT 3 SEALED** — alpha-factor spine done, design-panel-driven, red-team-hardened (no confirmed live leak), all fix-now remediated. **NEXT (a future run, NOT started): Increment 4 — strategies + backtest.**
 
-## 🔨 Increment 3 — alpha factors (build done; Phase C red-team next)
+## ✅ Increment 3 — alpha factors (SEALED)
 
 Design panel `wf_03e33f11-392` → `docs/INCREMENT-3-DESIGN.md` (WITHIN ADR §5 lean scope, no ADR
-change). TDD build, all 5 clusters green + committed + main fast-forwarded:
-1. `feat(factors): STEP 1` (`f69c905`) — FINAL `AlphaFactor` base (compute() @final, STEP 0–10 +
-   GUARD A–E: inf-on-_raw rejected before z, std==0⇒NaN explicit, the one mandatory shift(1)),
-   `factors/errors.py` (roots at `risk.errors.ArcaneError`), reliability=DERIVED read-only.
-2. `feat(factors): STEP 2` (`5fa9d55`) — SQLite `TrialLedger` (INSERT OR IGNORE PK, structurally
-   monotonic, fail-closed on corrupt/missing — the M18 defense; mirrors `executor/idempotency.py`).
-3. `feat(factors): STEP 3` (`bbb317a`) — the lean 13 standard factors (momentum/meanrev/volatility/
-   volume/range), each one NaN-guarded `_raw` (`.where(denom>0)`, `log_safe`); correlated families
-   KEPT (no orthogonalization — bias gate prunes).
-4. `feat(factors): STEP 4` (`2ec7f9a`) — `FactorRegistry` + `default_registry`; `validate_all` runs
-   prefix-stability on BOTH `_raw` AND `compute()` (a power-of-2 future-scale leak is bit-exactly
-   masked on compute() yet caught on _raw — proven) + frame-adequacy (2·MAX_TOTAL_WINDOW+5=343);
-   forge-proof register (dup/non-DERIVED rejected); seeds the ledger with 13 idempotently.
-5. `feat(factors): STEP 5` (`51faaac`) — `leak_lint` + SHIFT_NEG/CENTERED_ROLLING/RESAMPLE/SORT/
-   interpolate, scan widened to factors/; `make inc3` gate created.
+change). TDD build, all 5 clusters green + committed; then red-team + remediate + seal:
+1. STEP 1 (`f69c905`) — FINAL `AlphaFactor` base (compute() @final, STEP 0–10 + GUARD A–E:
+   inf-on-_raw rejected before z, std==0⇒NaN explicit, the one mandatory shift(1)); `factors/errors.py`
+   roots at `risk.errors.ArcaneError`; reliability=DERIVED read-only (§4.3).
+2. STEP 2 (`5fa9d55`) — SQLite `TrialLedger` (INSERT OR IGNORE PK, structurally monotonic,
+   fail-closed on corrupt/missing — the M18 defense; mirrors `executor/idempotency.py`).
+3. STEP 3 (`bbb317a`) — the lean **13** standard factors (momentum: mom_21d/mom_63d/mom_126_skip21;
+   meanrev: reversal_5d; volatility: vol_21d/atr_14; volume: dollar_vol_21d/rel_volume_21d/
+   amihud_illiq_21d; range: hl_range_21d/close_loc_in_range/dist_from_sma_50/sma_ratio_20_50), each
+   one NaN-guarded `_raw` (`.where(denom>0)`, `log_safe`); correlated families KEPT (no
+   orthogonalization — bias gate prunes). **Trial ledger n_trials = 13.**
+4. STEP 4 (`2ec7f9a`) — `FactorRegistry` + `default_registry`; `validate_all` runs prefix-stability
+   on BOTH `_raw` AND `compute()` (a power-of-2 future-scale leak is bit-exactly masked on compute()
+   yet caught on _raw — proven) + frame-adequacy; forge-proof register (dup/non-DERIVED rejected);
+   seeds the ledger with 13 idempotently.
+5. STEP 5 (`51faaac`) — `leak_lint` + SHIFT_NEG/CENTERED_ROLLING/RESAMPLE/SORT/interpolate, scan
+   widened to factors/; `make inc3` gate created.
 
-**NEXT: Phase C red-team (wave-based Workflow) → Phase D remediate + SEAL.** Resume from `51faaac`.
+**RED-TEAM COMPLETE + REMEDIATED** (`9914b86`). Workflow `wf_5b8d385e-493` (6 finder lenses/2 waves,
+all alive, 13 findings); the VERIFY+SYNTH phases were throttled by a transient server-side rate limit
+(NOT quota), so the fix-driving findings were verified **single-threaded** in the main loop with
+empirical repros (per insight-autonomous-quality-discipline). **Verdict: no confirmed live leak** —
+the 13 factors are prefix-stable on _raw AND compute. **8 fix-now hardenings remediated** (TDD,
+gated): validate_all now checks the FULL frame (not a depth-slice — closed a length-dependent leak
+hole) + absolute-min floor + value-adequacy; GUARD A rejects off-contract dtypes; ledger None-guard;
+leak_lint +diff/pct_change-neg, +.floor(freq=kw), +dict-tickers; `_raw` purity documented. Full
+triage + DEFER/WON'T-FIX: `docs/INC3-HARDENING-BACKLOG.md`.
+
+**NEXT (a FUTURE run — NOT started): Increment 4 — strategies + backtest.** Increment 3 is sealed; do
+not reopen without cause. When Inc 4 starts: `StrategySpec` (frozen, YAML, references only registered
+`factor_id`s + regime labels + z-crossings — structurally no hand-coded thresholds); the walk-forward
+backtest; bump `n_trials` in the ledger for every factor/param/strategy combo evaluated. The Inc-3
+DEFERs to clear: ledger DB-deletion high-water-mark (before the DSR consumer wires n_trials), the
+registry-2 author-trust residual, stateful-_raw structural enforcement.
 
 ---
+
+### (archived) Increment 3 build pointer — superseded by the seal above
+Build complete at `51faaac` (clusters 1–5); red-team + remediation + seal followed.
 
 ### (archived) Increment 2 seal pointer
 **Head:** `22cc76f` · `make inc1` AND `make inc2` → PASS. **✅ INCREMENT 2 SEALED** — all STEPs 0–8 done, live-proven, comprehensive sealing red-team complete (no confirmed live leak), all fix-now remediated.
