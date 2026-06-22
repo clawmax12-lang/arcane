@@ -10,7 +10,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -103,6 +103,29 @@ def test_pit_tier_requires_membership_vintage() -> None:
         _meta(SourceTier.POLYGON_PIT)  # is_pit=True but no vintage -> fake-PIT refused
     ok = _meta(SourceTier.POLYGON_PIT, membership_vintage=_AS_OF.ts)
     assert ok.survivorship_unverified is False
+
+
+def test_pit_membership_vintage_must_not_be_after_as_of() -> None:
+    # SURV-1 (sealing red-team): a FORWARD-dated vintage is a survivorship look-ahead — mirror
+    # pit_guard's ingest_ts<=as_of and AsOf's reject-future. Completes the upgrade tripwire so the
+    # future Polygon author cannot mint fake-PIT by post-dating instead of by omission.
+    future = _AS_OF.ts + timedelta(days=1)
+    with pytest.raises(RestatedMembershipError):
+        _meta(SourceTier.POLYGON_PIT, membership_vintage=future)
+    # vintage == as_of and vintage < as_of are both accepted (not a look-ahead).
+    assert (
+        _meta(SourceTier.POLYGON_PIT, membership_vintage=_AS_OF.ts).survivorship_unverified is False
+    )
+    past = _AS_OF.ts - timedelta(days=30)
+    assert _meta(SourceTier.POLYGON_PIT, membership_vintage=past).survivorship_unverified is False
+
+
+def test_t2_evidence_records_membership_vintage() -> None:
+    # The T2 verdict must be auditable: the vintage it trusted (or its absence) is in the evidence.
+    clean = survivorship_t2(_meta(SourceTier.POLYGON_PIT, membership_vintage=_AS_OF.ts))
+    assert clean.evidence["membership_vintage"] == _AS_OF.ts.isoformat()
+    degraded = survivorship_t2(_meta(SourceTier.OPERATOR_FILE))
+    assert degraded.evidence["membership_vintage"] == "none"
 
 
 def test_meta_reliability_is_structured() -> None:

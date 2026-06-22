@@ -107,6 +107,17 @@ class UniverseMeta:
             raise RestatedMembershipError(
                 f"tier {self.source_tier} claims PIT membership but supplied no membership vintage"
             )
+        # The vintage must not POST-DATE the as_of clock — a forward-dated membership is a
+        # survivorship look-ahead, the mirror of pit_guard's ingest_ts<=as_of and AsOf's
+        # reject-future. Guarded on any non-None vintage (defense-in-depth, not only PIT tiers) so
+        # the upgrade tripwire cannot be bypassed by post-dating instead of by omission (SURV-1).
+        if self.membership_vintage is not None and (
+            pd.Timestamp(self.membership_vintage) > pd.Timestamp(self.as_of)
+        ):
+            raise RestatedMembershipError(
+                f"membership_vintage {self.membership_vintage} is after as_of {self.as_of} "
+                f"(future-dated membership is a survivorship look-ahead)"
+            )
 
     @property
     def survivorship_unverified(self) -> bool:
@@ -232,6 +243,11 @@ def survivorship_t2(meta: UniverseMeta) -> BiasTestResult:
             "source_tier": str(meta.source_tier),
             "universe_hash": meta.universe_hash,
             "is_pit_membership": str(meta.is_pit_membership),
+            "membership_vintage": (
+                meta.membership_vintage.isoformat()
+                if meta.membership_vintage is not None
+                else "none"
+            ),
         },
     )
     logger.info(

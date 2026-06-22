@@ -88,7 +88,12 @@ class _Visitor(ast.NodeVisitor):
         self._enter_function(node)
 
     def _in_whitelisted_helper(self) -> bool:
-        return any(name in WHITELIST_FUNCTIONS for name in self._fn_stack)
+        # The whitelist is the CALENDAR authority — scoped to calendar.py (faithful to the spec's
+        # ``calendar.session_label_for_daily_bar`` prefix). A same-named helper in any other data/
+        # module gets no pass, so the sole-authority guarantee cannot be diluted by naming.
+        return self.basename == CALENDAR_FILE and any(
+            name in WHITELIST_FUNCTIONS for name in self._fn_stack
+        )
 
     def _add(self, node: ast.AST, rule: str, message: str) -> None:
         lineno = getattr(node, "lineno", 0)

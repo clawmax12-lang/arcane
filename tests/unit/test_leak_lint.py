@@ -111,14 +111,21 @@ def test_catches_ffill_and_bfill() -> None:
 # --- whitelisted sanctioned helpers may use otherwise-banned primitives ---
 
 
-def test_whitelisted_helper_may_normalize() -> None:
+def test_whitelisted_helper_may_normalize_in_calendar() -> None:
     src = "def session_label_for_daily_bar(ts):\n    return ts.normalize()\n"
-    assert _rules(src) == set()
+    assert _rules(src, path="src/trading/data/calendar.py") == set()
 
 
-def test_whitelisted_daily_bar_instant_helper() -> None:
+def test_whitelisted_daily_bar_instant_helper_in_calendar() -> None:
     src = "def daily_bar_instant(s):\n    return s.floor('D')\n"
-    assert _rules(src) == set()
+    assert _rules(src, path="src/trading/data/calendar.py") == set()
+
+
+def test_whitelist_does_not_apply_outside_calendar() -> None:
+    # SURV/LEAKLINT (sealing red-team): the whitelist is the calendar AUTHORITY, scoped to
+    # calendar.py — a same-named helper in any other data/ module gets no pass.
+    src = "def session_label_for_daily_bar(ts):\n    return ts.normalize()\n"
+    assert "DATE_TRUNC" in _rules(src, path="src/trading/data/alpaca_loader.py")
 
 
 def test_same_primitive_outside_whitelist_is_flagged() -> None:
