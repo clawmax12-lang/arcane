@@ -12,10 +12,24 @@ Banned, with the rule that flags them:
   These drop tz/time and silently re-bucket a bar into the wrong session = a ~1-day look-ahead.
 * ``GET_CALENDAR`` — any ``get_calendar`` reference/import outside ``calendar.py``; the calendar
   module is the sole, ``side='left'`` session authority.
-* ``IMPUTATION`` — ``.fillna()`` / ``.ffill()`` / ``.bfill()``; in a PIT layer a hole MUST stay a
-  hole (ffill/zero-fill is the design's CRITICAL fabricated-volume leak, §8).
+* ``IMPUTATION`` — ``.fillna()`` / ``.ffill()`` / ``.bfill()`` / ``.interpolate()``; in a PIT layer
+  a hole MUST stay a hole (ffill/zero-fill/interpolate is the CRITICAL fabricated leak, §8).
 * ``MODULE_TICKERS`` — a module-scope collection of >=3 ticker-shaped string literals (a hardcoded,
   survivorship-biased universe; real membership must come from a content-hashed source).
+* ``SHIFT_NEG`` — ``.shift(<negative>)`` (``.shift(-1)`` parses as ``UnaryOp(USub)``, NOT a negative
+  ``Constant`` — a literal-only check misses it). A negative shift pulls a future row into the
+  present (Increment 3, factors). Positive ``.shift(1)`` is REQUIRED by the base and stays clean.
+* ``CENTERED_ROLLING`` — ``.rolling(center=<not False>)``; a centered window straddles future bars.
+* ``RESAMPLE`` — ``.resample()`` / ``.asfreq()``; re-bucketing/relabeling can pull a bar into an
+  interval that closes in the future and breaks the row-aligned ``len(out)==len(df)`` contract.
+* ``SORT`` — ``.sort_values()`` / ``.sort_index()``; reordering rows destroys time alignment so a
+  later row can land at an earlier position (a silent target/feature misalignment).
+
+The contextual leaks an AST list CANNOT catch without false-positives (whole-series ``.mean()`` vs a
+trailing ``.rolling().mean()`` share a method name; ``.iloc[-1]`` / ``.tail(1)`` normalization;
+``.rank()`` over a column) are the load-bearing job of the RUNTIME prefix-stability property, run on
+BOTH ``_raw`` and ``compute()`` (``factors/registry.validate_all``). leak-lint is the static
+complement, not the guarantee (insight: a deny-list is best-effort; the architecture is the teeth).
 
 It is AST, never substring: it does NOT trip on ``schema.validate(df)`` (method name is
 ``validate``, not ``date``), ``unicodedata.normalize(form, s)`` (2 args, not 0), ``np.floor(arr)``
@@ -43,7 +57,9 @@ WHITELIST_FUNCTIONS: Final[frozenset[str]] = frozenset(
     {"session_label_for_daily_bar", "daily_bar_instant"}
 )
 _ZERO_ARG_TRUNC: Final[frozenset[str]] = frozenset({"date", "normalize"})
-_IMPUTATION_METHODS: Final[frozenset[str]] = frozenset({"fillna", "ffill", "bfill"})
+_IMPUTATION_METHODS: Final[frozenset[str]] = frozenset({"fillna", "ffill", "bfill", "interpolate"})
+_RESAMPLE_METHODS: Final[frozenset[str]] = frozenset({"resample", "asfreq"})
+_SORT_METHODS: Final[frozenset[str]] = frozenset({"sort_values", "sort_index"})
 _MATH_RECEIVERS: Final[frozenset[str]] = frozenset({"np", "numpy", "math"})
 _MIN_TICKERS: Final[int] = 3
 _TICKER_RE: Final[re.Pattern[str]] = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
@@ -107,6 +123,10 @@ class _Visitor(ast.NodeVisitor):
         if isinstance(func, ast.Attribute):
             self._check_date_trunc(func, node)
             self._check_imputation(func, node)
+            self._check_shift_neg(func, node)
+            self._check_centered_rolling(func, node)
+            self._check_resample(func, node)
+            self._check_sort(func, node)
         self.generic_visit(node)
 
     def _check_date_trunc(self, func: ast.Attribute, call: ast.Call) -> None:
@@ -143,6 +163,48 @@ class _Visitor(ast.NodeVisitor):
                 f"banned .{func.attr}() fabricates data; a PIT hole must stay a hole (§8)",
             )
 
+    def _check_shift_neg(self, func: ast.Attribute, call: ast.Call) -> None:
+        # Positive .shift(1)/.shift(21) is REQUIRED (base's mandatory shift + momentum lookbacks)
+        # and stays clean; only a NEGATIVE shift (a future row pulled into the present) is banned.
+        if func.attr != "shift":
+            return
+        if call.args and _is_negative_numeric(call.args[0]):
+            self._add(call, "SHIFT_NEG", "banned .shift(<negative>) pulls a future row into bar t")
+            return
+        for kw in call.keywords:
+            if kw.arg == "periods" and _is_negative_numeric(kw.value):
+                self._add(
+                    call, "SHIFT_NEG", "banned .shift(periods=<negative>) is a future look-ahead"
+                )
+                return
+
+    def _check_centered_rolling(self, func: ast.Attribute, call: ast.Call) -> None:
+        if func.attr != "rolling":
+            return
+        for kw in call.keywords:
+            if kw.arg == "center":
+                explicit_false = isinstance(kw.value, ast.Constant) and kw.value.value is False
+                if not explicit_false:  # center=True / a variable / anything but a literal False
+                    self._add(
+                        call,
+                        "CENTERED_ROLLING",
+                        "banned non-False .rolling(center=...) straddles future bars",
+                    )
+
+    def _check_resample(self, func: ast.Attribute, call: ast.Call) -> None:
+        if func.attr in _RESAMPLE_METHODS:
+            self._add(
+                call,
+                "RESAMPLE",
+                f"banned .{func.attr}() re-buckets/relabels across time (look-ahead)",
+            )
+
+    def _check_sort(self, func: ast.Attribute, call: ast.Call) -> None:
+        if func.attr in _SORT_METHODS:
+            self._add(
+                call, "SORT", f"banned .{func.attr}() reorders rows -> silent time misalignment"
+            )
+
     def visit_Attribute(self, node: ast.Attribute) -> None:
         if node.attr == "get_calendar" and self.basename != CALENDAR_FILE:
             self._add(node, "GET_CALENDAR", "get_calendar reference outside calendar.py")
@@ -157,6 +219,20 @@ class _Visitor(ast.NodeVisitor):
         if self.basename != CALENDAR_FILE and any(a.name == "get_calendar" for a in node.names):
             self._add(node, "GET_CALENDAR", "imports get_calendar outside calendar.py")
         self.generic_visit(node)
+
+
+def _is_negative_numeric(node: ast.expr) -> bool:
+    """True for a syntactically-negative shift arg: ``-1`` (``UnaryOp(USub, ...)``) or a negative
+    numeric ``Constant``. ``.shift(-1)`` parses as ``UnaryOp(USub, Constant(1))`` — NOT a negative
+    Constant — so the literal-only check alone would MISS every negative shift."""
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        return True
+    return (
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, int | float)
+        and not isinstance(node.value, bool)
+        and node.value < 0
+    )
 
 
 def _string_collection_elts(value: ast.expr) -> list[ast.expr] | None:
