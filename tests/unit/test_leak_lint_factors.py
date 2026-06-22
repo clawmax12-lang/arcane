@@ -107,6 +107,37 @@ def test_catches_interpolate() -> None:
     assert "IMPUTATION" in _rules("def f(s):\n    return s.interpolate()\n")
 
 
+# --- SHIFT_NEG siblings: .diff(<neg>) / .pct_change(periods=<neg>) (red-team skeptic-1) ---
+
+
+def test_catches_negative_diff() -> None:
+    assert "SHIFT_NEG" in _rules("def f(s):\n    return s.diff(-1)\n")
+
+
+def test_catches_negative_pct_change_keyword() -> None:
+    assert "SHIFT_NEG" in _rules("def f(s):\n    return s.pct_change(periods=-1)\n")
+
+
+def test_positive_diff_and_pct_change_are_not_flagged() -> None:
+    assert "SHIFT_NEG" not in _rules("def f(s):\n    return s.diff()\n")
+    assert "SHIFT_NEG" not in _rules("def f(s):\n    return s.pct_change(1)\n")
+
+
+# --- DATE_TRUNC keyword form + dict-keyed tickers (red-team leaklint-3) ---
+
+
+def test_catches_floor_freq_keyword() -> None:
+    assert "DATE_TRUNC" in _rules('def f(ts):\n    return ts.floor(freq="D")\n')
+
+
+def test_catches_dict_keyed_ticker_universe() -> None:
+    assert "MODULE_TICKERS" in _rules('U = {"AAPL": 1, "MSFT": 2, "GOOG": 3}\n')
+
+
+def test_lowercase_dict_is_not_a_ticker_universe() -> None:
+    assert "MODULE_TICKERS" not in _rules('CFG = {"open": 1, "high": 2, "low": 3}\n')
+
+
 # --- a representative clean factor body trips NOTHING (no false positives) ---
 
 

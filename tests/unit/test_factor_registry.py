@@ -183,20 +183,68 @@ class _MaskedRescaleLeak(AlphaFactor):
         return close * scale
 
 
-def test_validate_all_catches_an_obvious_future_shift_leak(tmp_path: object) -> None:
-    reg = default_registry(_ledger(tmp_path))
-    reg.register(_FutureShiftLeak())
+def _registry_with(*factors: AlphaFactor) -> FactorRegistry:
+    reg = FactorRegistry()
+    for f in factors:
+        reg.register(f)
+    return reg
+
+
+def test_validate_all_catches_an_obvious_future_shift_leak() -> None:
     with pytest.raises(PrefixStabilityError):
-        reg.validate_all([_panel(343)])
+        _registry_with(_FutureShiftLeak()).validate_all([_panel(300)])
 
 
-def test_validate_all_catches_a_rescale_leak_that_compute_masks(tmp_path: object) -> None:
+def test_validate_all_catches_a_rescale_leak_that_compute_masks() -> None:
     leak = _MaskedRescaleLeak()
     # 1) demonstrate the MASK: the full compute() of this factor is prefix-stable (leak hidden,
     #    because the trailing z-score is bit-exactly invariant to the power-of-2 scale) ...
     assert first_violation(leak, _panel(120)) is None
     # 2) ... yet validate_all RAISES, because it ALSO checks the UNGUARDED _raw.
-    reg = default_registry(_ledger(tmp_path))
-    reg.register(leak)
     with pytest.raises(PrefixStabilityError):
-        reg.validate_all([_panel(343)])
+        _registry_with(leak).validate_all([_panel(300)])
+
+
+class _LengthDependentLeak(AlphaFactor):
+    """Adversarial: peeks at the future ONLY when the frame is long (a length-dependent leak).
+
+    A per-factor depth-SLICE (the old validate_all) would check only short prefixes and MISS this;
+    the red-team (registry-1) showed it passed a sliced gate but first_violation on the FULL frame
+    catches it. validate_all now checks the full frame.
+    """
+
+    id: ClassVar[str] = "length_dependent_leak"
+    family: ClassVar[str] = "test"
+    rationale: ClassVar[str] = "adversarial: leaks only at len(df) >= 70"
+    raw_lookback: ClassVar[int] = 5  # honestly small => old slice depth was ~59
+
+    def _raw(self, df: pd.DataFrame) -> pd.Series:
+        close = df["close"].astype("float64").copy()
+        if len(df) >= 70:
+            close.iloc[0] = df["close"].astype("float64").iloc[-1]  # poison row 0 with the future
+        return close
+
+
+def test_validate_all_catches_a_length_dependent_leak_on_the_full_frame() -> None:
+    # red-team registry-1: a depth-slice (~59 rows) never reaches the len>=70 leaky region.
+    with pytest.raises(PrefixStabilityError):
+        _registry_with(_LengthDependentLeak()).validate_all([_panel(300)])
+
+
+class _ConstantRaw(AlphaFactor):
+    """A factor whose _raw is constant => trailing std==0 => GUARD C masks every z to NaN."""
+
+    id: ClassVar[str] = "constant_raw"
+    family: ClassVar[str] = "test"
+    rationale: ClassVar[str] = "value-degenerate: a constant signal"
+    raw_lookback: ClassVar[int] = 0
+
+    def _raw(self, df: pd.DataFrame) -> pd.Series:
+        return pd.Series(1.0, index=df.index, dtype="float64")
+
+
+def test_validate_all_rejects_a_value_degenerate_panel() -> None:
+    # red-team failopen-1: an all-NaN output makes the prefix check vacuously true (a false-green);
+    # the gate must exercise REAL signal, else FrameAdequacyError.
+    with pytest.raises(FrameAdequacyError, match="no non-NaN"):
+        _registry_with(_ConstantRaw()).validate_all([_panel(300)])

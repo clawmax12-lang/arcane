@@ -60,6 +60,9 @@ _ZERO_ARG_TRUNC: Final[frozenset[str]] = frozenset({"date", "normalize"})
 _IMPUTATION_METHODS: Final[frozenset[str]] = frozenset({"fillna", "ffill", "bfill", "interpolate"})
 _RESAMPLE_METHODS: Final[frozenset[str]] = frozenset({"resample", "asfreq"})
 _SORT_METHODS: Final[frozenset[str]] = frozenset({"sort_values", "sort_index"})
+# Methods whose FIRST positional (or ``periods=``) arg is a period offset: a negative value pulls a
+# future row into the present (.diff(-1)/.pct_change(periods=-1) are .shift(-1) siblings).
+_NEG_PERIOD_METHODS: Final[frozenset[str]] = frozenset({"shift", "diff", "pct_change"})
 _MATH_RECEIVERS: Final[frozenset[str]] = frozenset({"np", "numpy", "math"})
 _MIN_TICKERS: Final[int] = 3
 _TICKER_RE: Final[re.Pattern[str]] = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
@@ -144,11 +147,19 @@ class _Visitor(ast.NodeVisitor):
             receiver = func.value
             if isinstance(receiver, ast.Name) and receiver.id in _MATH_RECEIVERS:
                 return
-            if (
+            positional = bool(
                 call.args
                 and isinstance(call.args[0], ast.Constant)
                 and isinstance(call.args[0].value, str)
-            ):
+            )
+            # ALSO catch the freq= keyword form (red-team leaklint-3): .floor(freq="D").
+            keyword = any(
+                k.arg == "freq"
+                and isinstance(k.value, ast.Constant)
+                and isinstance(k.value.value, str)
+                for k in call.keywords
+            )
+            if positional or keyword:
                 self._add(
                     call,
                     "DATE_TRUNC",
@@ -165,16 +176,18 @@ class _Visitor(ast.NodeVisitor):
 
     def _check_shift_neg(self, func: ast.Attribute, call: ast.Call) -> None:
         # Positive .shift(1)/.shift(21) is REQUIRED (base's mandatory shift + momentum lookbacks)
-        # and stays clean; only a NEGATIVE shift (a future row pulled into the present) is banned.
-        if func.attr != "shift":
+        # and stays clean; only a NEGATIVE period (a future row pulled into the present) is banned —
+        # for .shift AND its siblings .diff / .pct_change (red-team skeptic-1).
+        attr = func.attr
+        if attr not in _NEG_PERIOD_METHODS:
             return
         if call.args and _is_negative_numeric(call.args[0]):
-            self._add(call, "SHIFT_NEG", "banned .shift(<negative>) pulls a future row into bar t")
+            self._add(call, "SHIFT_NEG", f"banned .{attr}(<negative>) pulls a future row into t")
             return
         for kw in call.keywords:
             if kw.arg == "periods" and _is_negative_numeric(kw.value):
                 self._add(
-                    call, "SHIFT_NEG", "banned .shift(periods=<negative>) is a future look-ahead"
+                    call, "SHIFT_NEG", f"banned .{attr}(periods=<negative>) is a future look-ahead"
                 )
                 return
 
@@ -236,9 +249,12 @@ def _is_negative_numeric(node: ast.expr) -> bool:
 
 
 def _string_collection_elts(value: ast.expr) -> list[ast.expr] | None:
-    """Elements of a literal list/tuple/set, or of ``frozenset({...})`` / ``set({...})``."""
+    """Elements of a literal list/tuple/set, dict KEYS, or ``frozenset({...})`` / ``set({...})``."""
     if isinstance(value, ast.List | ast.Tuple | ast.Set):
         return list(value.elts)
+    # A dict literal keyed by ticker strings is a hardcoded universe too (red-team leaklint-3).
+    if isinstance(value, ast.Dict):
+        return [k for k in value.keys if k is not None]
     if (
         isinstance(value, ast.Call)
         and isinstance(value.func, ast.Name)

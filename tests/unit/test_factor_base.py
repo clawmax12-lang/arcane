@@ -144,8 +144,35 @@ class _RawNonNumeric(AlphaFactor):
 
 
 def test_non_numeric_raw_fails_closed() -> None:
-    with pytest.raises(FactorContractError, match="not numeric"):
+    with pytest.raises(FactorContractError, match="numeric"):
         _RawNonNumeric().compute(_frame([10.0, 11.0, 12.0, 13.0]))
+
+
+class _RawNumericString(AlphaFactor):
+    id: Final[str] = "raw_numeric_string"
+    rationale: Final[str] = "adversarial: object Series of numeric STRINGS (silently coercible)"
+    z_window: Final[int] = 2
+    raw_lookback: Final[int] = 0
+
+    def _raw(self, df: pd.DataFrame) -> pd.Series:
+        return pd.Series([str(float(i)) for i in range(len(df))], index=df.index, dtype="object")
+
+
+class _RawBool(AlphaFactor):
+    id: Final[str] = "raw_bool"
+    rationale: Final[str] = "adversarial: bool/object Series (silently coercible)"
+    z_window: Final[int] = 2
+    raw_lookback: Final[int] = 0
+
+    def _raw(self, df: pd.DataFrame) -> pd.Series:
+        return (df["close"].astype("float64") > 11.0).astype("object")
+
+
+@pytest.mark.parametrize("factor", [_RawNumericString(), _RawBool()], ids=lambda f: f.id)
+def test_silently_coercible_off_contract_dtype_fails_closed(factor: AlphaFactor) -> None:
+    # red-team leak-1: to_numpy(dtype="float64") would SILENTLY coerce these; GUARD A rejects them.
+    with pytest.raises(FactorContractError, match="real-numeric"):
+        factor.compute(_frame([10.0, 11.0, 12.0, 13.0]))
 
 
 def test_params_exposes_the_factor_windows() -> None:

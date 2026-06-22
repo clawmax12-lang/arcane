@@ -113,6 +113,13 @@ class TrialLedger:
                 "WHERE combo_hash = ?",
                 (combo_hash,),
             ).fetchone()
+            if row is None:  # pragma: no cover - defensive (record() always passes non-null values)
+                # INSERT OR IGNORE swallows a NOT-NULL violation as well as a PK conflict; if the
+                # row is then absent the combo was NOT counted -> fail closed (an under-count is the
+                # M18 vector), not a bare TypeError from the missing row (red-team ledger-1).
+                raise TrialLedgerError(
+                    f"trial {combo_hash} absent after INSERT OR IGNORE (a swallowed constraint?)"
+                )
             return _row_to_record(row)
 
         return self._exec(_body)

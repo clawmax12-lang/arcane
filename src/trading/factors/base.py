@@ -78,7 +78,11 @@ class AlphaFactor(ABC):
         MAY use a positive ``.shift(n)`` as a trailing LOOKBACK offset (``close`` n bars ago) but
         MUST NOT add an output-alignment shift — the base owns the single ``shift(1)``. MUST map any
         non-finite division to ``NaN`` via ``.where(denom > 0)`` (never ``.fillna/.ffill/.bfill``,
-        which are banned and fabricating). Returns a ``pd.Series`` aligned to ``df.index``.
+        which are banned and fabricating). Returns a real-numeric ``pd.Series`` aligned to
+        ``df.index``. MUST be a PURE, deterministic function of ``df`` with NO cross-call/instance
+        state — the registry-wide prefix-stability gate assumes purity, and a memoizing ``_raw``
+        seeded by an earlier full-frame call could otherwise hide a look-ahead (red-team
+        leaklint-2).
         """
 
     # --- structural re-derivation (base-owned; a subclass has no override point) ---
@@ -101,6 +105,13 @@ class AlphaFactor(ABC):
         if not isinstance(raw, pd.Series):
             raise FactorContractError(
                 f"{self.id}._raw must return a pd.Series, got {type(raw).__name__}"
+            )
+        # Reject off-contract dtypes BEFORE to_numpy (red-team leak-1): to_numpy(dtype="float64")
+        # SILENTLY coerces an object-Series of numeric strings ('1.0') / bools / complex instead of
+        # failing closed. Accept only a real-numeric Series (float/int, incl. Float64/Int64).
+        if not (pd.api.types.is_float_dtype(raw) or pd.api.types.is_integer_dtype(raw)):
+            raise FactorContractError(
+                f"{self.id}._raw must be a real-numeric (float/int) Series, got dtype {raw.dtype!r}"
             )
         if len(raw) != len(df) or not raw.index.equals(df.index):
             raise FactorContractError(f"{self.id}._raw output is not aligned to the bar index")

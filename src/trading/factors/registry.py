@@ -43,6 +43,10 @@ from trading.factors.volume import AmihudIlliq21d, DollarVol21d, RelVolume21d
 
 MIN_FACTORS: Final[int] = 10
 MAX_FACTORS: Final[int] = 15  # ADR §5 lean budget — never exceed
+# Absolute minimum panel length, independent of the author-declared raw_lookback (red-team
+# registry-2): the frame-adequacy floor is otherwise derived solely from raw_lookback, so an
+# UNDERSTATED lookback would shrink the floor below the factor's true reach and hide a deep leak.
+_ABSOLUTE_MIN_FRAME: Final[int] = 256
 
 
 def default_factors() -> tuple[AlphaFactor, ...]:
@@ -114,7 +118,7 @@ class FactorRegistry:
             return  # honest vacuous pass — no factors registered
         if not frames:
             raise FrameAdequacyError("validate_all requires at least one sample frame")
-        floor = 2 * self.max_total_window() + 5
+        floor = max(2 * self.max_total_window() + 5, _ABSOLUTE_MIN_FRAME)
         for df in frames:
             if len(df) < floor:
                 raise FrameAdequacyError(
@@ -122,11 +126,25 @@ class FactorRegistry:
                     "(too short => a vacuous false-green look-ahead check)"
                 )
         for factor in self._factors.values():
-            depth = 2 * (factor.raw_lookback + factor.z_window + 1) + 5
+            raw_view = _PrefixView(f"{factor.id}__raw", factor._raw)
+            compute_view = _PrefixView(factor.id, factor.compute)
+            produced_signal = False
             for df in frames:
-                sub = df.iloc[:depth]  # frame >= floor >= depth, so the slice is adequate
-                assert_prefix_stable(_PrefixView(f"{factor.id}__raw", factor._raw), sub)  # raw
-                assert_prefix_stable(_PrefixView(factor.id, factor.compute), sub)  # full compute()
+                # FULL frame, NO depth-slice (red-team registry-1/registry-2): a slice misses a
+                # length-dependent leak that only activates at len(df) > depth, and an understated
+                # raw_lookback would shrink the slice below the true reach. Check EVERY prefix.
+                assert_prefix_stable(raw_view, df)  # the UNGUARDED raw signal
+                assert_prefix_stable(compute_view, df)  # the full leak-guarded compute()
+                if not produced_signal and bool(factor.compute(df).notna().any()):
+                    produced_signal = True
+            if not produced_signal:
+                # length-adequate but VALUE-degenerate (e.g. constant input => std==0 => GUARD C
+                # masks all z to NaN): an all-NaN output makes the prefix check vacuously true, a
+                # silent false-green (red-team failopen-1). A real gate must exercise real signal.
+                raise FrameAdequacyError(
+                    f"factor {factor.id!r} produced no non-NaN value on any sample frame "
+                    "(value-degenerate panel => a vacuous false-green look-ahead check)"
+                )
 
 
 def default_registry(ledger: TrialLedger) -> FactorRegistry:

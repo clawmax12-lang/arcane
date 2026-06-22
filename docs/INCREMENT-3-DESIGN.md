@@ -216,10 +216,11 @@ to `_Visitor.visit_Call` (all respect the existing `calendar.py` whitelist scopi
   `factors/` once the scan root includes it.
 
 **Caught at RUNTIME only (NOT AST):** full-series / normalize-by-last reductions (whole-series
-`.mean()/.std()/.max()/.sum()/.rank()` broadcast back, `.iloc[-1]`, `.tail(1)` as a normalizer,
-non-trailing `.expanding()`). A trailing `.rolling().mean()` shares the method name, so a static ban
-would be leaky (substring) or block legitimate calls — these are exactly the contextual leaks the
-prefix-stability property (run on `_raw`) catches by construction.
+`.mean()/.std()/.max()/.sum()/.rank()` broadcast back, `.iloc[-1]`, `.tail(1)` as a normalizer). A
+trailing `.rolling().mean()` shares the method name, so a static ban would be leaky (substring) or
+block legitimate calls — these are exactly the contextual leaks the prefix-stability property (run
+on `_raw`) catches by construction. (Note — `.expanding()` and `.ewm()` are TRAILING and therefore
+prefix-stable: they are **permitted**, not leaks, and correctly trip nothing — red-team leaklint-4.)
 
 ---
 
