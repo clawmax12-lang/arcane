@@ -53,6 +53,15 @@ class CompositionRule(StrEnum):
     Z_WEIGHTED_SUM = "z_weighted_sum"
 
 
+class PositionMode(StrEnum):
+    """How the composite maps to a position. A STRUCTURAL choice (an enum), not a hand threshold."""
+
+    #: position = clip(composite, -1, 1) — may go short.
+    LONG_SHORT = "long_short"
+    #: position = clip(composite, 0, 1) — long-only (short side floored at flat).
+    LONG_ONLY = "long_only"
+
+
 class FactorLeg(BaseModel):
     """One factor's contribution to a strategy: a registered ``factor_id``, a magnitude, a sign."""
 
@@ -84,6 +93,7 @@ class StrategySpec(BaseModel):
     name: str = Field(min_length=1)
     legs: tuple[FactorLeg, ...]
     rule: CompositionRule = CompositionRule.Z_WEIGHTED_SUM
+    position_mode: PositionMode = PositionMode.LONG_SHORT
     composite_scale: float = Field(default=1.0, gt=0.0, allow_inf_nan=False)
     spec_version: int = Field(default=1, ge=1)
     #: The cost-model version this spec is bound to (folded into ``spec_hash`` so a cost change is a
@@ -118,6 +128,7 @@ class StrategySpec(BaseModel):
         return {
             "name": self.name,
             "rule": self.rule.value,
+            "position_mode": self.position_mode.value,
             "composite_scale": self.composite_scale.hex(),
             "spec_version": self.spec_version,
             "cost_model_id": self.cost_model_id,
