@@ -5,22 +5,24 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-22 · **Branch:** `build/increment-2-data` — pushed; `main` fast-forwarded to it on GitHub.
-**Head:** `938cf8d` · `make inc1` AND `make inc2` → PASS (~96.8% cov, `mypy --strict`). STEP 6 live-proven; red-team remediated; **STEP 7 (PIT universe + T2 + G4) DONE.**
+**Head:** `8d213bf` · `make inc1` AND `make inc2` → PASS (97.0% cov, `mypy --strict`, leak-lint clean). STEP 6 live-proven; red-team remediated; **STEPs 7–8 DONE** (PIT universe + T2 + G4; registry-wide prefix-stability + AST leak-lint wired into the gate). **NEXT = comprehensive data-layer red-team, then SEAL Increment 2.**
 
 ---
 
 ## 🌙 Autonomous overnight run — ARMED 2026-06-22 (operator-approved scope: "Finish Increment 2")
 
-If the operator says **go**, execute this UNATTENDED, then STOP and write a morning report:
+**GO given 2026-06-22.** Executing UNATTENDED; progress tracked here, morning report at the end.
 
-1. **STEP 8** — `data/prefix_stability.py` (registry-wide `compute(df[:k]) == compute(df[:k+1])[:k]`)
-   + `data/leak_lint.py` (AST ban-list: `.date()`/`.floor`/`.normalize`/`get_calendar` outside
-   `calendar.py`, module-scope ticker literals — **WHITELIST** `calendar.session_label_for_daily_bar`
-   and `calendar.daily_bar_instant`), both wired into `make inc2`.
-2. **Comprehensive data-layer red-team** (Workflow) over the whole layer incl. universe + STEP 8 →
-   find → adversarially verify → prioritized backlog.
-3. **Remediate** every verified fix-now finding.
-4. **Seal Increment 2** → STOP.
+1. ✅ **STEP 8 DONE** (commit `8d213bf`) — `data/prefix_stability.py` (registry-wide
+   `compute(df[:k]) == compute(df[:k+1])[:k]`, fail-closed, proven to CATCH leaky factors) +
+   `data/leak_lint.py` (AST ban-list: DATE_TRUNC `.date()`/`.normalize()`/`.floor(freq)`,
+   GET_CALENDAR outside `calendar.py`, IMPUTATION `.fillna/.ffill/.bfill`, MODULE_TICKERS; AST not
+   substring; **whitelists** `session_label_for_daily_bar`/`daily_bar_instant`). `leak-lint` wired
+   as an explicit `make inc2` step; prefix-stability runs in the gated pytest suite.
+2. 🔄 **Comprehensive data-layer red-team** (Workflow) over the whole layer incl. universe + STEP 8 →
+   find → adversarially verify → prioritized backlog.  ← NEXT
+3. ⬜ **Remediate** every verified fix-now finding.
+4. ⬜ **Seal Increment 2** → STOP.
 
 Discipline EVERY step: TDD → `make inc1 && make inc2` green → commit → push → fast-forward `main` →
 update this file + project memory. Compaction-safe: resume from the last green checkpoint.
@@ -40,7 +42,7 @@ got done, every commit + `main` ref, what's green, any halt + why, and the exact
 ✅ Onboarding   5 keys verified (Alpaca paper, Anthropic, Tavily, Firecrawl+MCP, Apify)
 ✅ ADR-001      architecture decided (edge-falsification harness; paper-only; lean scope)
 ✅ Inc 1        SAFETY SPINE — built, TDD, and CERTIFIED by 3 adversarial red-team passes
-🔄 Inc 2        Alpaca data spine — STEPs 0–7 DONE (+ red-team-hardened, live-proven); STEP 8 next  ← HERE
+🔄 Inc 2        Alpaca data spine — STEPs 0–8 DONE (+ red-team-hardened, live-proven); comprehensive red-team → seal  ← HERE
 ⬜ Inc 3        Factors (10–15, lean)
 ⬜ Inc 4        Strategies + backtest
 ⬜ Inc 5        Bias-gate + FIRST paper submit   (needs Discord paging webhook first)
@@ -52,7 +54,7 @@ got done, every commit + `main` ref, what's green, any halt + why, and the exact
 Honest scope (ADR-001): Inc 1–8 ≈ 55–90 focused build+test hours + a mandatory 14-day paper soak.
 **The executor is currently a NO-OP** — `broker_paper.submit()` raises NotImplementedError; nothing trades.
 
-## Exact next step (Increment 2 — STEP 7 of 9)
+## Exact next step (Increment 2 — STEPs 0–8 DONE; comprehensive red-team → seal)
 
 **RED-TEAM COMPLETE** (`wf_d4deb502-ad8`, 9 lenses → adversarial verify → synth; 28 findings → ~9
 issues; core PIT/leak guarantees were sound, no finding was a live leak). **All 8 `fix_now` items
@@ -71,12 +73,19 @@ UNREACHABLE (`SourceTier`+`TIER_IS_PIT` authority; forge-proof derived `survivor
 content-hashed `config/universe.yaml` (honest non-PIT). `expected_grid` wired the deferred **G4**
 coverage report (PIT-honest, DST-correct). Observability via stdlib logging. 40+ invariant tests.
 
-**NEXT = STEP 8** — `data/prefix_stability.py` (registry-wide `compute(df[:k]) == compute(df[:k+1])[:k]`
-property) + `data/leak_lint.py` (AST ban-list: `.date()`/`.floor`/`.normalize`/`get_calendar` outside
-`calendar.py`, module-scope ticker literals — **whitelist** `calendar.session_label_for_daily_bar` /
-`daily_bar_instant`), both wired into `make inc2`. Then the **comprehensive data-layer red-team**
-(incl. universe + STEP 8) before Increment 3. Remaining DEFERs in `docs/INC2-HARDENING-BACKLOG.md`
-(AlpacaTodayUniverse, real PolygonUniverse, full structured-logging unification, PIT-empties semantics).
+**STEP 8 DONE** (commit `8d213bf`). `data/prefix_stability.py`: registry-generic look-ahead
+property `compute(df[:k]) == compute(df[:k+1])[:k]`, pure/typed/fail-closed (raise·length·type·
+index·dtype divergence ⇒ VIOLATION), generic over any iterable of computations so Inc-3
+`AlphaFactor` plugs in with zero rework (`validate_all()` calls `check_registry`); tests prove
+TEETH (full-series-z / centered-window / future-shift / normalize-by-last all CAUGHT).
+`data/leak_lint.py`: AST ban-list over `data/` — DATE_TRUNC (`.date()`/`.normalize()` 0-arg,
+`.floor(freq)`), GET_CALENDAR (outside `calendar.py`), IMPUTATION (`.fillna/.ffill/.bfill`),
+MODULE_TICKERS (≥3 ticker-shaped literals); AST not substring (proven NOT to trip on
+`schema.validate(df)`, `unicodedata.normalize(form,s)`, `np.floor(arr)`); whitelists
+`session_label_for_daily_bar`/`daily_bar_instant`. `leak-lint` is an explicit `make inc2` step;
+prefix-stability runs in the gated pytest suite. Remaining DEFERs in
+`docs/INC2-HARDENING-BACKLOG.md` (AlpacaTodayUniverse, real PolygonUniverse, full
+structured-logging unification, PIT-empties semantics).
 
 Full design + build plan: `docs/INCREMENT-2-DESIGN.md`. DONE & committed: STEP 0 deps+gate ·
 STEP 1 reliability+errors · STEP 2 bar schema+BarMeta+IEX stamp · STEP 3 calendar(side='left'
@@ -92,14 +101,12 @@ files. Now anchored to `/data/` + `/logs/`; all 11 `src/trading/data/*.py` (incl
 `sanitize.py`) are tracked (rescue `d917b25`, STEP 6 tests `945557c`). **If you ever see a green
 gate but `git ls-files` is missing a source dir again — this is the footgun; check `.gitignore`.**
 
-**NEXT = STEP 7** — `src/trading/data/universe.py`: a point-in-time universe whose survivorship
-bias-test returns `passed=False` (we have no PIT membership history → the universe is DEGRADED,
-never silently survivorship-clean). Then STEP 8 (`data/prefix_stability.py` registry-wide
-hypothesis + `data/leak_lint.py` AST ban-list — incl. banning `xcals.get_calendar` outside
-`calendar.py`, per its docstring — both wired into `make inc2`). Then **red-team the data layer**
-(look-ahead / survivorship / staleness / cache-poisoning) before Increment 3.
+**NEXT = comprehensive data-layer red-team** (Workflow) over the whole layer (loader/schema/
+calendar/quality/pit/cache/alpaca/universe + STEP 8): look-ahead / survivorship / staleness /
+cache-poisoning / fail-open lenses → adversarially verify → prioritized backlog → remediate every
+verified fix-now → **SEAL Increment 2** → STOP. Do NOT start Increment 3.
 
-Data-layer red-team backlog (found, not yet hardened):
+Data-layer red-team backlog (found, not yet hardened — feed these into the comprehensive pass):
 - alpaca-py `StockBarsRequest` STRIPS tzinfo (stores naive UTC wall-clock). `_fetch` passes UTC
   today so it is safe, but a non-UTC tz-aware `start`/`end` would be silently mis-clamped.
   Consider asserting/converting the window to UTC in `LoadParams.build` or `_fetch`.
