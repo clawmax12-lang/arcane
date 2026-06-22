@@ -83,3 +83,12 @@ class RestatedMembershipError(UniverseError):
 
 class UniverseSourceError(UniverseError):
     """An unmapped/unknown SourceTier reached the PIT whitelist (fail-closed)."""
+
+
+class PrefixStabilityError(DataError):
+    """A registered computation broke the prefix-stability property (a look-ahead leak by
+    construction): ``compute(df[:k]) != compute(df[:k+1])[:k]`` for some k."""
+
+
+class LeakLintError(DataError):
+    """The AST leak-linter found a banned look-ahead/leak-prone primitive in the data layer."""
