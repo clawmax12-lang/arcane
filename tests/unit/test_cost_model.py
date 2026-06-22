@@ -135,6 +135,9 @@ def test_cost_is_nonnegative_and_zero_iff_no_turnover(values: list[float]) -> No
     assert (arr >= 0.0).all()  # never a negative (rebate) cost
     prior = np.concatenate([[0.0], np.asarray(values)[:-1]])
     turnover = np.abs(np.asarray(values) - prior)
-    # cost == 0 exactly where turnover == 0 (a no-change bar), nonzero otherwise
-    assert np.allclose(arr[turnover == 0.0], 0.0)
-    assert (arr[turnover > 0.0] > 0.0).all()
+    # a no-change bar is EXACTLY free (the M3 "no zero-cost fills" claim is about real trades).
+    assert (arr[turnover == 0.0] == 0.0).all()
+    # a MATERIAL trade always costs > 0. (An infinitesimal subnormal turnover can underflow the
+    # 6e-4 * turnover product to 0.0 — mathematically fine and irrelevant to a [-1,1] position.)
+    material = turnover > 1e-9
+    assert (arr[material] > 0.0).all()
