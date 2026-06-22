@@ -33,3 +33,8 @@ class FrameAdequacyError(FactorError):
 class TrialLedgerError(FactorError):
     """The append-only trial ledger is missing/unreadable/corrupt, or an un-encodable trial was
     recorded — never silently report a lower count (under-counting is the M18 overfit vector)."""
+
+
+class FactorNotFoundError(FactorError):
+    """A lookup for a ``factor_id`` not present in the registry (fail-closed; never a bare KeyError,
+    never a silent miss). The backtest layer translates this to its own ``UnknownFactorError``."""

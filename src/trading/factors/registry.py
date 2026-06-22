@@ -27,6 +27,7 @@ from trading.factors.base import AlphaFactor
 from trading.factors.errors import (
     DuplicateFactorError,
     FactorContractError,
+    FactorNotFoundError,
     FrameAdequacyError,
 )
 from trading.factors.meanrev import Reversal5d
@@ -105,6 +106,18 @@ class FactorRegistry:
 
     def factors(self) -> tuple[AlphaFactor, ...]:
         return tuple(self._factors.values())
+
+    def get(self, factor_id: str) -> AlphaFactor:
+        """Return the registered factor by id, or fail closed.
+
+        Raises ``FactorNotFoundError`` (never a bare ``KeyError``, never a silent ``None``) so a
+        strategy referencing a phantom ``factor_id`` cannot silently resolve to a shorter leg list
+        (the backtest's ``resolve_spec`` translates this to ``UnknownFactorError``).
+        """
+        try:
+            return self._factors[factor_id]
+        except KeyError:
+            raise FactorNotFoundError(f"no registered factor with id {factor_id!r}") from None
 
     def __len__(self) -> int:
         return len(self._factors)
