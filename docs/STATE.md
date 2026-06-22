@@ -4,8 +4,30 @@
 > `docs/adr/ADR-001-foundation.md`, then run `make inc1`.** This is the canonical,
 > version-controlled state so the process is never lost to a context compaction.
 
-**As of:** 2026-06-22 · **Branch:** `build/increment-3-factors` — pushed; `main` fast-forwarded to it on GitHub.
-**Head:** `9914b86` (last code commit; this STATE+backlog seal commit sits on top) · `make inc1` AND `make inc2` AND `make inc3` → PASS (97.30% cov, `mypy --strict`, leak-lint clean over data + factors). **✅ INCREMENT 2 SEALED** (head `22cc76f`). **✅ INCREMENT 3 SEALED** — alpha-factor spine done, design-panel-driven, red-team-hardened (no confirmed live leak), all fix-now remediated. **NEXT (a future run, NOT started): Increment 4 — strategies + backtest.**
+**As of:** 2026-06-23 · **Branch:** `build/increment-4-backtest` (branched from sealed Inc-3 `2512d3f`).
+**Head:** `2512d3f` (Inc-3 seal) · `make inc1` AND `inc2` AND `inc3` → PASS (97% cov, `mypy --strict`, leak-lint clean). **✅ INC 2 SEALED** (`22cc76f`). **✅ INC 3 SEALED** (`2512d3f`). **🔨 INCREMENT 4 — strategies + walk-forward backtest — IN PROGRESS.** Phase A design panel DONE (`wf_6158e014-a7e` → `docs/INCREMENT-4-DESIGN.md`; checkpoint verdict all-FALSE → autonomous). Building C1–C9.
+
+## 🔨 Increment 4 — strategies + walk-forward backtest (IN PROGRESS)
+
+Design panel `wf_6158e014-a7e` (4 lenses + synthesis) → `docs/INCREMENT-4-DESIGN.md`. **Checkpoint
+verdict: all 4 operator-decision criteria FALSE** (cost model conservative/standard; walk-forward standard
+de Prado purged+embargoed 12/3/3 anchored; exactly 4 strategies; no ADR change / Inc-5 NOT pulled). New
+sibling pkg `src/trading/backtest/`. Heart: `@final BacktestEngine.run()` (one untrusted hook
+`_target_positions`), TWO lags (factor `shift(1)` = info-availability + engine `shift(1)` = execution),
+pnl `position.shift(1)*close.pct_change()-cost` (all trailing). Leak = a test failure via engine causality
+property (`PositionView`+`RealizedView` prefix-stability) + a perfect-foresight off-by-one MUST-FAIL
+canary. Frozen `StrategySpec` (z-space legs, no threshold field; `spec_hash` = lossless `float.hex`
+canonical-JSON == ledger `combo_hash`). Conservative cost ≈6 bps/turnover + `cost_scale` knob (Inc-5
+stress). Standard de Prado 12/3/3; warmup floor re-derived from `registry.max_total_window()` (registry-2
+fix). REUSE `TrialLedger` (kind=strategy; `n_trials` 13→17). `BacktestResult` = STATS ONLY, no verdict
+field (AST name-ban). ledger-2 HWM consciously RE-DEFERRED to Inc-5 (hedges: durable storage +
+`n_trials_at_eval` stamp + HARD tripwire in the design doc §8). **Inc-4 NEVER gates/approves/kills —
+Inc-5 bias gate is the HARD boundary, NOT crossed.**
+
+Build clusters (TDD, each gated by `inc1 && inc2 && inc3 && inc4`): C1 errors · C2 StrategySpec+spec_hash ·
+C3 registry resolution · C4 cost model · C5 walk-forward splitter · C6 statistics · C7 ledger integration ·
+C8 @final engine + causality/must-fail · C9 leak_lint root + `make inc4` + 4-strategy integration. Then
+Phase C red-team (wave-based) → Phase D remediate + SEAL.
 
 ## ✅ Increment 3 — alpha factors (SEALED)
 
