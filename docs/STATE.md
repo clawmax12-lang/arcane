@@ -4,30 +4,52 @@
 > `docs/adr/ADR-001-foundation.md`, then run `make inc1`.** This is the canonical,
 > version-controlled state so the process is never lost to a context compaction.
 
-**As of:** 2026-06-23 · **Branch:** `build/increment-4-backtest` (branched from sealed Inc-3 `2512d3f`).
-**Head:** `2512d3f` (Inc-3 seal) · `make inc1` AND `inc2` AND `inc3` → PASS (97% cov, `mypy --strict`, leak-lint clean). **✅ INC 2 SEALED** (`22cc76f`). **✅ INC 3 SEALED** (`2512d3f`). **🔨 INCREMENT 4 — strategies + walk-forward backtest — IN PROGRESS.** Phase A design panel DONE (`wf_6158e014-a7e` → `docs/INCREMENT-4-DESIGN.md`; checkpoint verdict all-FALSE → autonomous). Building C1–C9.
+**As of:** 2026-06-23 · **Branch:** `build/increment-4-backtest` — pushed; `main` fast-forwarded to it.
+**Head:** `8915ec3` (last code commit; this STATE+backlog+memory seal sits on top) · `make inc1` AND
+`inc2` AND `inc3` AND `inc4` → PASS (97.7% cov, `mypy --strict`, leak-lint clean over data + factors +
+backtest). **✅ INC 2 SEALED** (`22cc76f`). **✅ INC 3 SEALED** (`2512d3f`). **✅ INCREMENT 4 SEALED** —
+strategies + walk-forward backtest done, design-panel-driven, red-team-hardened (no reachable leak / no
+Inc-5 boundary violation), all 4 fix-now remediated. **NEXT (a future run, NOT started): Increment 5 —
+the bias/kill gate (DSR/PSR/PBO/Reality-Check, ALL-of accept-or-kill) + the FIRST paper submit.**
 
-## 🔨 Increment 4 — strategies + walk-forward backtest (IN PROGRESS)
+## ✅ Increment 4 — strategies + walk-forward backtest (SEALED)
 
-Design panel `wf_6158e014-a7e` (4 lenses + synthesis) → `docs/INCREMENT-4-DESIGN.md`. **Checkpoint
-verdict: all 4 operator-decision criteria FALSE** (cost model conservative/standard; walk-forward standard
-de Prado purged+embargoed 12/3/3 anchored; exactly 4 strategies; no ADR change / Inc-5 NOT pulled). New
-sibling pkg `src/trading/backtest/`. Heart: `@final BacktestEngine.run()` (one untrusted hook
-`_target_positions`), TWO lags (factor `shift(1)` = info-availability + engine `shift(1)` = execution),
-pnl `position.shift(1)*close.pct_change()-cost` (all trailing). Leak = a test failure via engine causality
-property (`PositionView`+`RealizedView` prefix-stability) + a perfect-foresight off-by-one MUST-FAIL
-canary. Frozen `StrategySpec` (z-space legs, no threshold field; `spec_hash` = lossless `float.hex`
-canonical-JSON == ledger `combo_hash`). Conservative cost ≈6 bps/turnover + `cost_scale` knob (Inc-5
-stress). Standard de Prado 12/3/3; warmup floor re-derived from `registry.max_total_window()` (registry-2
-fix). REUSE `TrialLedger` (kind=strategy; `n_trials` 13→17). `BacktestResult` = STATS ONLY, no verdict
-field (AST name-ban). ledger-2 HWM consciously RE-DEFERRED to Inc-5 (hedges: durable storage +
-`n_trials_at_eval` stamp + HARD tripwire in the design doc §8). **Inc-4 NEVER gates/approves/kills —
-Inc-5 bias gate is the HARD boundary, NOT crossed.**
+Design panel `wf_6158e014-a7e` (4 lenses + synthesis) → `docs/INCREMENT-4-DESIGN.md`; **checkpoint all 4
+operator criteria FALSE → autonomous** (conservative/standard cost; standard de-Prado purged+embargoed
+12/3/3 anchored; 4 strategies; no ADR change / Inc-5 NOT pulled). New sibling pkg `src/trading/backtest/`.
+TDD build, 9 clusters green + committed, then red-team + remediate + seal:
+1. C1 `06d3ed1` — `errors.py` (`BacktestError`(ArcaneError) sibling) + `make inc4` gate.
+2. C2 `984c3fc` — frozen `StrategySpec`/`FactorLeg`; `spec_hash` = SHA-256 over canonical JSON with
+   lossless `float.hex()`; structurally no threshold field (`extra=forbid`).
+3. C3 `ff1b4f4` — `resolve_spec` + `FactorRegistry.get` fail-closed (`UnknownFactorError`); phantom
+   `factor_id` can't reach `run`.
+4. C4 `bff19b6`/`0eeae7f` — conservative `CostModel` (~6 bps floor, `cost_scale≥1`, turnover-driven,
+   no zero/neg fill; the M3 defense).
+5. C5 `bc94f28` — `walk_forward.py` purged+embargoed 12/3/3 anchored splitter (prefix-stable, disjoint OOS).
+6. C6 `a928562` — compute-only `statistics.py` + `BacktestResult` (NO verdict field) + AST verdict name-ban.
+7. C7 `f44e035` — `ledger_integration.py` (REUSE `TrialLedger`, kind=strategy, `n_trials` 13→17) + the 4
+   default strategies + `PositionMode`.
+8. C8 `dbcd1af` — `@final BacktestEngine.run()`: ONE execution `shift(1)` + factor `shift(1)`, pnl
+   `position.shift(1)*close.pct_change()-cost` (all trailing); GUARD A/B, warmup+value adequacy, as_of
+   PIT re-check, net≤gross; `PositionView`/`RealizedView` causality adapters + perfect-foresight off-by-one
+   MUST-FAIL canary.
+9. C9 `dc2a08e`/`d49411e` — 4-strategy end-to-end integration + leak_lint backtest-root teeth; engine 100%.
 
-Build clusters (TDD, each gated by `inc1 && inc2 && inc3 && inc4`): C1 errors · C2 StrategySpec+spec_hash ·
-C3 registry resolution · C4 cost model · C5 walk-forward splitter · C6 statistics · C7 ledger integration ·
-C8 @final engine + causality/must-fail · C9 leak_lint root + `make inc4` + 4-strategy integration. Then
-Phase C red-team (wave-based) → Phase D remediate + SEAL.
+**RED-TEAM COMPLETE + REMEDIATED** (`8915ec3`). Workflow `wf_60bf76b3-d42` (6 finder lenses / 2 waves of 3,
+all alive, empirical repros; **not throttled** this run). **Verdict: no reachable look-ahead leak and no
+reachable Inc-5 boundary violation** — the off-by-one is load-bearing (mutation-confirmed), join causal,
+`BacktestResult` verdict-free, cost conservative+monotone, `n_trials` identity field-complete. **4 fix-now
+remediated** (lead-verified by own repros, TDD+gated): RT03 `pct_change(fill_method=None)`; M3-COST-01
+`total_bps` non-finite fails closed; skeptic-1 explicit train-free `oos_*` stats (headline documented
+full-sample); F1 corrected design §7 (prefix-stability does NOT catch a dropped exec shift — the
+value-test + canary do). Full triage + DEFER (Inc-5 tripwires) / WON'T-FIX: `docs/INC4-HARDENING-BACKLOG.md`.
+
+**NEXT (a FUTURE run — NOT started): Increment 5 — the ALL-of bias/kill gate + FIRST paper submit.** The
+Inc-4 DEFERs Inc-5 must clear FIRST: (1) fold cost/fold-geometry into the trial identity before the DSR
+consumer reads `n_trials` (M18); (2) build the monotonic ledger high-water-mark before the first
+`n_trials` DSR read; (3) a FITTED consumer must set `purge ≥ max_total_window + label_horizon`; (4) T2
+must read `survivorship_biased` (never a clean pass). Discord paging webhook is also a prerequisite for
+the first paper submit. Increment 4 is sealed; do not reopen without cause.
 
 ## ✅ Increment 3 — alpha factors (SEALED)
 
@@ -108,9 +130,9 @@ Discipline held EVERY step: TDD → `make inc1 && make inc2` green → commit �
 ✅ ADR-001      architecture decided (edge-falsification harness; paper-only; lean scope)
 ✅ Inc 1        SAFETY SPINE — built, TDD, and CERTIFIED by 3 adversarial red-team passes
 ✅ Inc 2        Alpaca data spine — STEPs 0–8 DONE, live-proven, sealing red-team complete, SEALED
-⬜ Inc 3        Factors (10–15, lean)   ← NEXT (a future run; NOT started)
-⬜ Inc 4        Strategies + backtest
-⬜ Inc 5        Bias-gate + FIRST paper submit   (needs Discord paging webhook first)
+✅ Inc 3        Factors (lean 13) — built, red-team-hardened, SEALED (`2512d3f`)
+✅ Inc 4        Strategies (4) + walk-forward backtest — built, red-team-hardened, SEALED (`8915ec3`)
+⬜ Inc 5        Bias-gate + FIRST paper submit   ← NEXT (a future run; NOT started; needs Discord webhook)
 ⬜ Inc 6        Regime + allocator
 ⬜ Inc 7        Agents + orchestration
 ⬜ Inc 8        Dashboard (Layer 15 — the LAST layer; a real UI needs the engine first)
