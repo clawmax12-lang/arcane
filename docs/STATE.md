@@ -4,17 +4,54 @@
 > `docs/adr/ADR-001-foundation.md`, then run `make inc1`.** This is the canonical,
 > version-controlled state so the process is never lost to a context compaction.
 
-**As of:** 2026-06-23 · **Branch:** `build/increment-5-bias-gate` — pushed; `main` fast-forwarded to it.
-**Head:** `1150d30` (Inc-5 red-team remediation; this STATE+backlog+memory seal sits on top) · `make
-inc1` AND `inc2` AND `inc3` AND `inc4` AND `inc5` → PASS (95.89% cov, `mypy --strict`, leak-lint clean
-over data + factors + backtest + bias_gate + notify). **✅ INC 2/3/4 SEALED.** **✅ INCREMENT 5
-SEALED** — the ALL-of bias/kill gate (DSR/PSR/PBO/SPA + WF-OOS, accept-or-KILL) + the 4 carried
-tripwires + a Telegram notifier (live-verified), design-panel-driven, red-team-hardened (1 critical +
-1 high + 2 latent fail-opens found AND closed; `wf_fa2cf190-080`, not throttled). **The gate's verdict
-on the 4 toys: ALL KILLED** (ADR §0 success — no edge on a survivorship-unverified universe). **The
-FIRST paper submit is DEFERRED** to a future run (operator-approved — executor still NO-OP, Murphy
-guards G1–G10 unwired). **NEXT (a future run, NOT started): the FIRST paper submit + Murphy guards +
-§8 abandonment loop** (prereqs in `docs/INC5-HARDENING-BACKLOG.md`). Do NOT start Inc 6.
+**As of:** 2026-06-23 · **Branch:** `build/increment-6-paper-submit` — pushed; `main` fast-forwarded.
+**Head:** `39f381e` (Inc-6 PART C) · `make inc1..inc6` → PASS (95.36% cov, `mypy --strict`, leak-lint
+clean over data + factors + backtest + bias_gate + notify + guards + executor).
+
+## 🔨 Increment 6 — FIRST paper submit (Polygon PIT + Murphy guards + gate-gated record-only submit) — BUILD COMPLETE; RED-TEAM NEXT
+
+Design panel `wf_3ad27bf2-439` (4 lenses + skeptic + synth) → `docs/INCREMENT-6-DESIGN.md`. Built in 3
+parts, 14 TDD clusters, each gated + committed + pushed + ff-main:
+- **PART A (C1–C4, `545c5aa`)** — Polygon PIT universe + UNFORGEABLE T2. Checkpoint GREEN (verified live:
+  `/v3/reference/tickers?ticker=&date=` reconstructs membership as a true interval — SIVB/SBNY active
+  ONLY within their real trading life). Base-seam `MembershipProvenance` hook (inert data; base still
+  owns the verdict). `data/membership_artifact.py` (content-addressed) + `membership_cache.py` +
+  `polygon_universe.py` (allowlist, abort-never-partial, token never logged). **DELETED the forgeable
+  global `_PIT_VERIFIER_WIRED` bool**; `tests_t2.py` now binds a POLYGON_PIT artifact BY HASH + window
+  coverage + no-missing (self-attested flags AND-ed advisory only). Survivorship TEETH: dropping SIVB
+  before its delist, or a mid-window delist, FAILS T2.
+- **PART B (C5–C8, `3072b11`)** — Murphy guards G1–G10 + §8 abandonment + §5.2 paging. New
+  `src/trading/guards/` package, all pure deterministic over injected HARD/STRUCTURED state. `apply_guards`
+  = the SINGLE kill-switch mutator (RED hard_stop latched BEFORE the page); only GATING guards mutate
+  the switch — G5/G9/G10 (DERIVED/TEXTUAL) ONLY page (§4.3 teeth). §8 reuses the sealed caps (property
+  test: abandonment AGREES with the pre-submit cap). §5.2 ladder: RED protective action at t=0, the
+  15/30/60 ladder is notification-only on an independent watchdog; TERMINAL does flat+hard_stop+page;
+  survives restart. `make inc6` = inc5 surface + leak-lint over guards + executor + adversarial teeth.
+- **PART C (C9–C14, `39f381e`)** — the gate-gated RECORD-ONLY submit. `AllocationGrant` mintable ONLY by
+  re-running the ALL-of (closes the type-confusion CRITICAL; killed → no grant → submit UNREPRESENTABLE).
+  `sizing.py` integer-share within caps (the $1 cap → NoTrade for any real share; property-tested).
+  `submit_allocated` = the ONLY broker.submit caller, requires a grant, RECORD_ONLY unless a single-use
+  phrase+spec-bound `state/SUBMIT_GO`; CLAIM-THEN-SUBMIT. Real alpaca PAPER submit behind an injected
+  client (paper hardcoded, token never logged). `run_loop_pass`: recon→guards→§8→page BEFORE any submit
+  (a disaster pass auto-flats + submits ZERO even with a grant present); fail-closed on a pass exception.
+  PHI1 AST teeth (no LLM/agent import in executor+guards). **C14 end-to-end null (ADR §0): with T2 made
+  CAPABLE of passing, the 4 toys are STILL all KILLED by the statistical wall → ZERO grants → ZERO
+  orders.** LIVE smokes (excluded from gate) green vs real Polygon + Alpaca paper (read-only, NO submit).
+
+**The executor is wired but the FIRST real order is DEFERRED to an explicit per-order operator GO**
+(the Inc-6 hard stop). Nothing has touched a broker beyond read-only connectivity. **NEXT: red-team the
+acting surface, remediate, SEAL.** Operator open questions resolved to the recommended defaults
+(`docs/INCREMENT-6-DESIGN.md` §7); operator may override before any real GO.
+
+---
+
+## ✅ Increment 5 — ALL-of bias/kill gate + Telegram notifier (SEALED)
+
+**Head:** `1150d30` (Inc-5 red-team remediation) · `make inc1..inc5` PASS. **✅ INC 2/3/4 SEALED.**
+**✅ INCREMENT 5 SEALED** — the ALL-of bias/kill gate (DSR/PSR/PBO/SPA + WF-OOS, accept-or-KILL) + the 4
+carried tripwires + a Telegram notifier (live-verified), design-panel-driven, red-team-hardened (1
+critical + 1 high + 2 latent fail-opens found AND closed; `wf_fa2cf190-080`, not throttled). **The
+gate's verdict on the 4 toys: ALL KILLED** (ADR §0 success). T2 fail-closed lifted in Inc-6 PART A.
 
 ## ✅ Increment 5 — ALL-of bias/kill gate + Telegram notifier (SEALED)
 
