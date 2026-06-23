@@ -5,12 +5,13 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-23 · **Branch:** `build/increment-4-backtest` — pushed; `main` fast-forwarded to it.
-**Head:** `8915ec3` (last code commit; this STATE+backlog+memory seal sits on top) · `make inc1` AND
-`inc2` AND `inc3` AND `inc4` → PASS (97.7% cov, `mypy --strict`, leak-lint clean over data + factors +
-backtest). **✅ INC 2 SEALED** (`22cc76f`). **✅ INC 3 SEALED** (`2512d3f`). **✅ INCREMENT 4 SEALED** —
-strategies + walk-forward backtest done, design-panel-driven, red-team-hardened (no reachable leak / no
-Inc-5 boundary violation), all 4 fix-now remediated. **NEXT (a future run, NOT started): Increment 5 —
-the bias/kill gate (DSR/PSR/PBO/Reality-Check, ALL-of accept-or-kill) + the FIRST paper submit.**
+**Head:** `b5739e5` (last code commit; this STATE+backlog+memory seal sits on top) · `make inc1` AND
+`inc2` AND `inc3` AND `inc4` → PASS (97.67% cov, `mypy --strict`, leak-lint clean over data + factors +
+backtest). **✅ INC 2 SEALED** (`22cc76f`). **✅ INC 3 SEALED** (`2512d3f`). **✅ INCREMENT 4 SEALED +
+RE-AUDITED** — strategies + walk-forward backtest done, design-panel-driven, red-team-hardened across TWO
+independent rounds; round 2 found + fixed 3 reachable fail-opens (ruin-aware stats + WF overlap reject,
+`b5739e5`). **NEXT (a future run, NOT started): Increment 5 — the bias/kill gate (DSR/PSR/PBO/Reality-Check,
+ALL-of accept-or-kill) + the FIRST paper submit.**
 
 ## ✅ Increment 4 — strategies + walk-forward backtest (SEALED)
 
@@ -43,6 +44,18 @@ remediated** (lead-verified by own repros, TDD+gated): RT03 `pct_change(fill_met
 `total_bps` non-finite fails closed; skeptic-1 explicit train-free `oos_*` stats (headline documented
 full-sample); F1 corrected design §7 (prefix-stability does NOT catch a dropped exec shift — the
 value-test + canary do). Full triage + DEFER (Inc-5 tripwires) / WON'T-FIX: `docs/INC4-HARDENING-BACKLOG.md`.
+
+**RED-TEAM ROUND 2 — independent re-audit + REMEDIATED** (`b5739e5`). On operator request, a fresh 6-lens
+Workflow `wf_618edde8-565` re-audited the seal. Finders ran (25 findings) but **Verify/Synth were 100%
+rate-limited** (infra) — so material findings were verified single-threaded with own repros (NOT treated
+as a clean pass; `insight-autonomous-quality-discipline`). **3 reachable fix-now remediated** (TDD+gated):
+NUM-2 `annualized_sharpe` scored a WIPED fold (`net ≤ -1.0`, reachable on a short into a >100% bar) as a
+strong POSITIVE; NUM-1/3 `max_drawdown` reported a false `0.0` on ruin; WF-1 `step_months < test_months`
+double-counted overlapped OOS sessions. Fix: ruin-aware stats (Sharpe/CAGR→NaN, total/max_dd→`-1.0`,
+never a win) + `WalkForwardConfig` rejects `step < test`. Nil practical impact on the shipped large-cap
+config, but these are the exact stats Inc-5's gate consumes (ADR §0). Lead's own deterministic probes
+(ledger=17, cost floor/monotone, verdict-free, causal-join teeth, end-to-end honest noise-Sharpes)
+re-confirmed clean. See `docs/INC4-HARDENING-BACKLOG.md` → "Red-team ROUND 2".
 
 **NEXT (a FUTURE run — NOT started): Increment 5 — the ALL-of bias/kill gate + FIRST paper submit.** The
 Inc-4 DEFERs Inc-5 must clear FIRST: (1) fold cost/fold-geometry into the trial identity before the DSR

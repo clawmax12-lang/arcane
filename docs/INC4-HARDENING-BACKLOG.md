@@ -96,3 +96,49 @@ latent gap unreachable from shipped code.
 - **[skeptic INC4-RT-05] Engine panel tz check is `tz is None` (weaker than the factor base's `== UTC`).**
   Fails closed either way: a non-UTC panel raises (`AlphaFactor._assert_bar_frame` enforces `== UTC`
   downstream when `compute` runs), so only the error TYPE differs. Documented; not worth a duplicate check.
+
+---
+
+# Red-team ROUND 2 — independent re-audit (`wf_618edde8-565`, 2026-06-23)
+
+**Why a second round:** the operator asked for an independent re-check of the seal. A fresh 6-lens
+red-team Workflow ran on `e1c73f4`. **Method (honest):** the 6 finder lenses completed (25 raw
+findings) but the **Verify + Synthesize phases were 100% rate-limited** (infra throttle — "not your
+usage limit"). Per `insight-autonomous-quality-discipline` a throttled "0 confirmed" is NOT a clean
+pass, so the lead **verified every material finding single-threaded** with its own `uv run python`
+repros. (Lenses confirmed CLEAN, matching the round-1 verdict: cost-realism 5×INFO, Inc-5 boundary
+5×INFO, ledger/M18 TL-1/TL-2 positive confirmations.)
+
+## FIX NOW — DONE (remediated in `b5739e5`, TDD + gated; `make inc1..inc4` green, 97.67%)
+1. **[CRITICAL-class, reachable] NUM-2 — `annualized_sharpe` scored a WIPED fold as a strong positive.**
+   A per-bar realized return `<= -1.0` (RUIN; reachable on a short into a >100% single-bar up-move —
+   confirmed: `gross_returns(short=-1, +150% bar) = -1.5`) gives the mean/std (compounding-blind)
+   Sharpe a large POSITIVE while the account is at zero, and `fraction_folds_positive` counted it as a
+   winner — fabricated edge (ADR §0). **Fix:** a ruin fold → `annualized_sharpe` / `annualized_return`
+   = `NaN` (never a win; drops out of `fraction_positive`).
+2. **[reachable] NUM-1/NUM-3 — `max_drawdown` reported a false 0.0 on ruin.** Once equity crosses zero
+   the `equity/running_max` ratio sign-flips and `.min()` returns `0.0` (zero drawdown on a blowout);
+   the exact `-1.0` boundary returned `NaN`+warning. **Fix:** a ruin fold → `max_drawdown` /
+   `total_return` = `-1.0` (an honest total loss; also closes the even-count `[-2,-2] → prod>0`
+   fabrication in `total_return`/`annualized_return`).
+3. **[MED, reachable] WF-1 — `step_months < test_months` overlapped OOS test windows.** The engine
+   concatenates each `fold.test` into the OOS index → overlapped sessions are double-counted →
+   inflated OOS magnitude (e.g. `test=6,step=3` → 2804 rows / 1434 unique). **Fix:** new
+   `WalkForwardConfig` `model_validator` rejects `step < test`. The 12/3/3 default (`step == test`)
+   is unaffected.
+
+Honest reachability note: the shipped 4 strategies on the large-cap operator universe never produce a
+>100% single-bar move, so NUM-1/2 had ~nil practical impact today — fixed because the reductions are
+general and **Inc-5's bias/kill gate reads these exact stats** (`per_fold_oos_sharpe`,
+`fraction_folds_positive`, `oos_*`); a stat that can call a wipeout a win is a latent landmine there.
+
+## DEFER / accepted (round 2)
+- **[WF-2, LOW] `step_months > test_months` silently drops OOS sessions** (e.g. `test=1,step=6` skips
+  83%). This is honest sub-sampling (it does NOT inflate/fabricate a number), so it is ALLOWED as a
+  deliberate caller choice; only the overlap (`step < test`) double-count is rejected. The 12/3/3
+  default is full coverage. DEFER a coverage-report field to Inc-5/6 if sub-sampled geometries get used.
+- **[ENGINE-NO-RUNTIME-FACTOR-GATE-1, MED] = the existing `INC4-RT-04` DEFER.** A sanctioned leaky
+  `_raw` reaches the engine (no runtime `validate_all`), but it IS caught at gate-time by the registry's
+  `validate_all` prefix-stability check (independently re-confirmed: a future-peek `_raw` raises
+  `PrefixStabilityError` at k=1). Runtime re-gating stays test-only by design (same layered posture as
+  Inc-2/Inc-3). No change.
