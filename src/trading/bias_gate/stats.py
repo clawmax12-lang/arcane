@@ -11,6 +11,7 @@ population moments (the SciPy ``bias=True`` convention); kurtosis is NON-excess 
 
 from __future__ import annotations
 
+import itertools
 import math
 from collections.abc import Sequence
 from typing import Final
@@ -19,7 +20,10 @@ import numpy as np
 import numpy.typing as npt
 
 from trading.bias_gate._normal import norm_cdf, norm_ppf
-from trading.bias_gate.thresholds import MIN_OOS_BARS
+from trading.bias_gate.thresholds import BOOTSTRAP_B, BOOTSTRAP_SEED, CSCV_BLOCKS, MIN_OOS_BARS
+
+#: A 2-D float matrix (T_obs rows × S strategies) of aligned per-obs OOS net returns.
+Matrix = npt.NDArray[np.float64]
 
 #: Euler-Mascheroni constant — the expected-max-of-N-Gaussians deflation coefficient.
 _EULER_GAMMA: Final[float] = 0.5772156649015329
@@ -158,3 +162,123 @@ def dsr_probability(oos_returns: FloatSeq, n_trials: int, family_sharpes: Sequen
     if not math.isfinite(sr0):
         return float("nan")
     return _prob_above(sr_hat, sr0, skew, kurt, r.size)
+
+
+# --- C7: family/selection-level judges (PBO via CSCV, conservative SPA) ---
+
+
+#: A clean family matrix must be finite and ruin-free before any family judge trusts it.
+def _matrix_is_admissible(matrix: Matrix, *, min_strategies: int) -> bool:
+    if matrix.ndim != 2:
+        return False
+    n_obs, n_strat = matrix.shape
+    if n_strat < min_strategies or n_obs < MIN_OOS_BARS:
+        return False
+    if not bool(np.isfinite(matrix).all()):
+        return False
+    return not bool((matrix <= _RUIN).any())
+
+
+def _column_sharpes(block: Matrix) -> Matrix:
+    """Per-column per-obs Sharpe over the block rows; NaN where the column is flat (sd==0)."""
+    mu = block.mean(axis=0)
+    sd = block.std(axis=0, ddof=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sharpe = mu / sd
+    sharpe[sd == 0.0] = np.nan
+    out: Matrix = np.asarray(sharpe, dtype="float64")
+    return out
+
+
+def _cscv_block_indices(n_obs: int) -> list[npt.NDArray[np.intp]] | None:
+    """Partition rows into the largest even count of blocks (<= CSCV_BLOCKS), each >= 2 rows."""
+    largest_even = min(CSCV_BLOCKS, (n_obs // 2) * 2)
+    for k in range(largest_even, 1, -2):
+        if n_obs // k >= 2:
+            return [np.asarray(b, dtype=np.intp) for b in np.array_split(np.arange(n_obs), k)]
+    return None
+
+
+def pbo_fraction(perf_matrix: Matrix) -> float:
+    """Probability of Backtest Overfitting via CSCV; NaN ⇒ KILL (S<2 / T<60 / non-finite / ruin).
+
+    The fraction of combinatorially-symmetric splits where the in-sample-best strategy ranks at or
+    below the OOS median (logit ``ω <= 0``). High PBO ⇒ the selection is overfit. Accept iff < 0.5.
+    """
+    matrix = np.asarray(perf_matrix, dtype="float64")
+    if not _matrix_is_admissible(matrix, min_strategies=2):
+        return float("nan")
+    _, n_strat = matrix.shape
+    blocks = _cscv_block_indices(matrix.shape[0])
+    if blocks is None:
+        return float("nan")
+    k = len(blocks)
+    lo, hi = 1.0 / (n_strat + 1), n_strat / (n_strat + 1)  # rank clip (avoid ±inf logits)
+    overfit = 0
+    valid = 0
+    for combo in itertools.combinations(range(k), k // 2):
+        is_set = set(combo)
+        is_rows = np.concatenate([blocks[i] for i in combo])
+        oos_rows = np.concatenate([blocks[i] for i in range(k) if i not in is_set])
+        is_sh = _column_sharpes(matrix[is_rows])
+        oos_sh = _column_sharpes(matrix[oos_rows])
+        valid_mask = np.isfinite(is_sh) & np.isfinite(oos_sh)
+        if int(valid_mask.sum()) < 2:
+            continue
+        valid += 1
+        n_star = int(np.argmax(np.where(valid_mask, is_sh, -np.inf)))
+        valid_oos = oos_sh[valid_mask]
+        less = int((valid_oos < oos_sh[n_star]).sum())
+        rel = (less + 1) / (valid_oos.size + 1)
+        rel = min(max(rel, lo), hi)
+        omega = math.log(rel / (1.0 - rel))
+        if omega <= 0.0:
+            overfit += 1
+    if valid == 0:
+        return float("nan")
+    return overfit / valid
+
+
+def _stationary_bootstrap_indices(
+    n_obs: int, n_boot: int, mean_block_len: int, rng: np.random.Generator
+) -> npt.NDArray[np.intp]:
+    """Politis-Romano stationary-bootstrap row indices, shape (n_boot, n_obs), wrap-around."""
+    p = 1.0 / mean_block_len
+    new_block = rng.random((n_boot, n_obs)) < p
+    new_block[:, 0] = True
+    starts = rng.integers(0, n_obs, size=(n_boot, n_obs))
+    pos = np.broadcast_to(np.arange(n_obs), (n_boot, n_obs))
+    idx_ff = np.maximum.accumulate(np.where(new_block, pos, 0), axis=1)
+    block_start_value = np.take_along_axis(starts, idx_ff, axis=1)
+    offset = pos - idx_ff
+    out: npt.NDArray[np.intp] = (block_start_value + offset) % n_obs
+    return out
+
+
+def spa_pvalue(
+    perf_matrix: Matrix, *, n_bootstrap: int = BOOTSTRAP_B, seed: int = BOOTSTRAP_SEED
+) -> float:
+    """Hansen (2005) SPA p-value, conservative least-favorable recentering; NaN ⇒ KILL.
+
+    Tests whether the BEST candidate's OOS mean beats a zero benchmark after the full search. The
+    least-favorable (studentized Reality-Check) recentering centers EVERY model at its sample mean —
+    harder to pass than SPA_c, the SAFE direction for a KILL-gate. Fail-closed on S<1, T<60, a
+    constant column (ω==0), ruin, or a non-finite matrix. Accept (family) iff p < 0.05.
+    """
+    matrix = np.asarray(perf_matrix, dtype="float64")
+    if not _matrix_is_admissible(matrix, min_strategies=1):
+        return float("nan")
+    n_obs = matrix.shape[0]
+    rng = np.random.default_rng(seed)
+    mean_block_len = math.ceil(math.sqrt(n_obs))
+    idx = _stationary_bootstrap_indices(n_obs, n_bootstrap, mean_block_len, rng)
+    boot_means = matrix[idx].mean(axis=1)  # (B, S)
+    d_bar = matrix.mean(axis=0)  # (S,)
+    omega = np.sqrt(n_obs * boot_means.var(axis=0, ddof=0))  # (S,)
+    if not bool(np.isfinite(omega).all()) or bool((omega == 0.0).any()):
+        return float("nan")
+    root_t = math.sqrt(n_obs)
+    v_obs = max(0.0, float((root_t * d_bar / omega).max()))
+    z = root_t * (boot_means - d_bar) / omega  # (B, S), null-centered (least favorable)
+    v_boot = np.maximum(0.0, z.max(axis=1))  # (B,)
+    return float((v_boot >= v_obs).mean())
