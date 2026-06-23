@@ -195,6 +195,55 @@ def test_refuses_to_act_when_is_live_true(tmp_path: Path, monkeypatch: pytest.Mo
     assert broker.calls == []
 
 
+def test_go_is_consumed_before_the_broker_call(tmp_path: Path) -> None:
+    # red-team D2: the single-use GO must be gone by the time broker.submit runs, so a crash during
+    # the submit cannot leave a valid GO that a second distinct order could reuse.
+    marker = _go_marker(tmp_path)
+    seen_at_submit: list[bool] = []
+
+    class _CheckBroker(PaperBroker):
+        def submit(self, intent: OrderIntent, client_order_id: str) -> BrokerOrderAck:
+            seen_at_submit.append(marker.exists())  # marker should ALREADY be consumed
+            return BrokerOrderAck(client_order_id, True, "ok")
+
+    out = submit_allocated(
+        _grant(),
+        _target(),
+        _quote(2.0),
+        _account(),
+        _cfg(per_trade=5.0),
+        _ks(tmp_path),
+        InMemoryIdempotencyStore(),
+        _CheckBroker(),
+        go_marker_path=marker,
+    )
+    assert out.submitted is True
+    assert seen_at_submit == [False]  # consumed BEFORE the broker call
+    assert not marker.exists()
+
+
+def test_submit_fails_closed_if_go_cannot_be_consumed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # if the single-use marker cannot be durably retired, refuse to submit (never act on an
+    # un-consumable GO).
+    marker = _go_marker(tmp_path)
+    monkeypatch.setattr(submit_mod, "_consume_marker", lambda *_a, **_k: False)
+    broker = _SpyBroker()
+    out = submit_allocated(
+        _grant(),
+        _target(),
+        _quote(2.0),
+        _account(),
+        _cfg(per_trade=5.0),
+        _ks(tmp_path),
+        InMemoryIdempotencyStore(),
+        broker,
+        go_marker_path=marker,
+    )
+    assert out.submitted is False and "consume" in out.reason and broker.calls == []
+
+
 def test_tripped_kill_switch_blocks_submit_even_with_go(tmp_path: Path) -> None:
     broker, store = _SpyBroker(), InMemoryIdempotencyStore()
     ks = _ks(tmp_path)

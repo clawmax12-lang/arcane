@@ -25,7 +25,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from trading.data.universe import SourceTier
+from trading.data.errors import ProvenanceBindingError
+from trading.data.universe import SourceTier, UniverseSnapshot, is_pit
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,20 +61,94 @@ class MembershipArtifact:
         return None
 
 
-@dataclass(frozen=True, slots=True)
-class ProvenanceBinding:
-    """The hash-bind passed ALONGSIDE a ``BacktestResult`` to T2 — the unforgeable pass key.
+_BIND_MINT = object()  # module-private sentinel — the only key that opens the constructor
 
-    Sourced STRUCTURALLY from the panel the engine actually ran (its symbol set + index window),
-    never author-declared — mirroring how ``spec_hash`` is derived, not stated. T2 recomputes the
-    survivorship coverage from these fields and requires a byte-equal artifact hash.
+
+class ProvenanceBinding:
+    """The hash-bind passed ALONGSIDE a ``BacktestResult`` to T2 — the UNFORGEABLE pass key.
+
+    Constructible ONLY via ``provenance_binding_from`` (the ``_BIND_MINT`` token gate), which
+    derives
+    the ``membership_artifact_hash`` from a real ``POLYGON_PIT`` ``UniverseSnapshot`` (whose
+    ``universe_hash`` is owned by the ``@final`` base from the class tier — not author-declarable).
+    A caller therefore cannot hand-build a binding carrying a forged hash; T2's artifact must
+    hash to
+    this real value, so a fabricated artifact can never pass (red-team D1 — the FC-1 cardinal sin).
+    ``traded_symbols`` / window come from the panel the engine actually ran (the gate cross-checks).
     """
+
+    __slots__ = (
+        "membership_artifact_hash",
+        "traded_symbols",
+        "window_start",
+        "window_end",
+        "as_of",
+    )
 
     membership_artifact_hash: str
     traded_symbols: tuple[str, ...]  # == sorted(panel.bars.keys())
     window_start: datetime  # == panel index min
     window_end: datetime  # == panel index max
     as_of: datetime
+
+    def __init__(
+        self,
+        *,
+        membership_artifact_hash: str,
+        traded_symbols: tuple[str, ...],
+        window_start: datetime,
+        window_end: datetime,
+        as_of: datetime,
+        _token: object,
+    ) -> None:
+        if _token is not _BIND_MINT:
+            raise ProvenanceBindingError(
+                "ProvenanceBinding is constructible only via provenance_binding_from"
+            )
+        object.__setattr__(self, "membership_artifact_hash", membership_artifact_hash)
+        object.__setattr__(self, "traded_symbols", traded_symbols)
+        object.__setattr__(self, "window_start", window_start)
+        object.__setattr__(self, "window_end", window_end)
+        object.__setattr__(self, "as_of", as_of)
+
+    def __setattr__(self, name: str, value: object) -> None:  # frozen
+        raise AttributeError("ProvenanceBinding is immutable")
+
+    def __repr__(self) -> str:
+        return (
+            f"ProvenanceBinding(hash={self.membership_artifact_hash!r}, "
+            f"traded_symbols={self.traded_symbols!r})"
+        )
+
+
+def provenance_binding_from(
+    snapshot: UniverseSnapshot,
+    *,
+    traded_symbols: tuple[str, ...],
+    window_start: datetime,
+    window_end: datetime,
+) -> ProvenanceBinding:
+    """Mint the unforgeable T2 binding from a real POLYGON_PIT snapshot + the engine's panel facts.
+
+    The hash is taken from ``snapshot.meta.universe_hash`` (base-owned, from a real Polygon fetch) —
+    NEVER a caller-supplied string. A non-PIT snapshot is refused (only a survivorship-clean source
+    can produce a binding). ``traded_symbols`` is sorted; the gate verifies it equals the real
+    panel.
+    """
+    if snapshot.meta.source_tier != SourceTier.POLYGON_PIT or not is_pit(snapshot.meta.source_tier):
+        raise ProvenanceBindingError(
+            f"ProvenanceBinding requires a POLYGON_PIT snapshot, got {snapshot.meta.source_tier}"
+        )
+    if not traded_symbols:
+        raise ProvenanceBindingError("ProvenanceBinding requires at least one traded symbol")
+    return ProvenanceBinding(
+        membership_artifact_hash=snapshot.meta.universe_hash,
+        traded_symbols=tuple(sorted(traded_symbols)),
+        window_start=window_start,
+        window_end=window_end,
+        as_of=snapshot.meta.as_of,
+        _token=_BIND_MINT,
+    )
 
 
 def _canonical(artifact: MembershipArtifact) -> Mapping[str, Any]:

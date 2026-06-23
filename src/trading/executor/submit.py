@@ -74,15 +74,23 @@ def submit_mode(
     return SubmitMode.RECORD_ONLY
 
 
-def _consume_marker(go_marker_path: Path, client_order_id: str) -> None:
-    """Single-use: rotate the GO marker to a forensic ``.consumed-<coid>`` trail (OQ-3)."""
+def _consume_marker(go_marker_path: Path, client_order_id: str) -> bool:
+    """Single-use: rotate the GO marker to a forensic ``.consumed-<coid>`` trail (OQ-3).
+
+    Returns True only if the marker was durably consumed. Called BEFORE the irreversible broker
+    submit, so a False return makes the caller FAIL CLOSED (never submit on an un-consumable GO) and
+    a crash after the rename can at worst LOSE the order, never authorize a second (red-team D2).
+    """
     try:
-        if go_marker_path.is_file():
-            go_marker_path.rename(
-                go_marker_path.parent / f"{go_marker_path.name}.consumed-{client_order_id}"
-            )
-    except OSError:  # pragma: no cover - best-effort rotation; a failed rotate never submits twice
-        logger.warning("could not rotate SUBMIT_GO marker after consuming it")
+        if not go_marker_path.is_file():
+            return False
+        go_marker_path.rename(
+            go_marker_path.parent / f"{go_marker_path.name}.consumed-{client_order_id}"
+        )
+        return True
+    except OSError:
+        logger.warning("could not durably consume the SUBMIT_GO marker — failing closed")
+        return False
 
 
 def submit_allocated(
@@ -149,12 +157,24 @@ def submit_allocated(
         return SubmitOutcome(
             False, SubmitMode.RECORD_ONLY, "record-only: journaled, no broker submit", coid, None
         )
-    # 5. LIVE_SUBMIT — CLAIM-THEN-SUBMIT (at-most-once). Claim BEFORE the broker call.
+    # 5. LIVE_SUBMIT — CLAIM-THEN-CONSUME-THEN-SUBMIT (at-most-once + single-use GO).
     if not store.remember(coid):
         return SubmitOutcome(
             False, SubmitMode.LIVE_SUBMIT, "lost idempotency race (concurrent submit)", coid, None
         )
+    # Consume the single-use GO BEFORE the irreversible broker call (red-team D2): a crash
+    # after this
+    # loses the order rather than letting one GO authorize a second distinct submit; a
+    # failed/unstable
+    # consume FAILS CLOSED — we never submit on a GO we could not durably retire.
+    if not _consume_marker(go_marker_path, coid):
+        return SubmitOutcome(
+            False,
+            SubmitMode.LIVE_SUBMIT,
+            "could not durably consume the single-use GO marker (fail closed)",
+            coid,
+            None,
+        )
     ack = broker.submit(intent, coid)  # real paper submit (paper=True hardcoded in PaperBroker)
-    _consume_marker(go_marker_path, coid)  # single-use: one GO authorizes one order
     logger.info("order_submitted coid=%s accepted=%s", coid, ack.accepted)
     return SubmitOutcome(True, SubmitMode.LIVE_SUBMIT, ack.detail, coid, ack.accepted)

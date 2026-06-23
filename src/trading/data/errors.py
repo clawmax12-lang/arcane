@@ -90,6 +90,11 @@ class PolygonProvenanceError(DataError):
     construction ABORTS and NO partial/clean membership set is ever sealed (fail closed)."""
 
 
+class ProvenanceBindingError(DataError):
+    """A ProvenanceBinding was constructed outside its token-gated producer, or from a non-PIT
+    snapshot — the gate's survivorship pass key cannot be hand-forged (red-team D1)."""
+
+
 class PrefixStabilityError(DataError):
     """A registered computation broke the prefix-stability property (a look-ahead leak by
     construction): ``compute(df[:k]) != compute(df[:k+1])[:k]`` for some k."""

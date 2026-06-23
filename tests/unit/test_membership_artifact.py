@@ -91,22 +91,16 @@ def test_changing_active_flag_changes_the_hash() -> None:
     assert base != membership_artifact_hash(_artifact(tuple(tampered)))
 
 
-def test_provenance_binding_is_frozen_data_only() -> None:
-    import dataclasses
+def test_provenance_binding_cannot_be_hand_constructed() -> None:
+    # token-gated (red-team D1) — see test_provenance_binding.py for the producer path.
+    from trading.data.errors import ProvenanceBindingError
 
-    b = ProvenanceBinding(
-        membership_artifact_hash="arcane-univ-deadbeef",
-        traded_symbols=("AAPL", "SIVB"),
-        window_start=datetime(2021, 1, 1, tzinfo=UTC),
-        window_end=_AS_OF,
-        as_of=_AS_OF,
-    )
-    assert {f.name for f in dataclasses.fields(b)} == {
-        "membership_artifact_hash",
-        "traded_symbols",
-        "window_start",
-        "window_end",
-        "as_of",
-    }
-    with __import__("pytest").raises(dataclasses.FrozenInstanceError):
-        b.membership_artifact_hash = "x"  # type: ignore[misc]
+    with __import__("pytest").raises(ProvenanceBindingError):
+        ProvenanceBinding(
+            membership_artifact_hash="arcane-univ-deadbeef",
+            traded_symbols=("AAPL", "SIVB"),
+            window_start=datetime(2021, 1, 1, tzinfo=UTC),
+            window_end=_AS_OF,
+            as_of=_AS_OF,
+            _token=object(),
+        )

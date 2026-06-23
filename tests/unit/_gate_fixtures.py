@@ -50,6 +50,33 @@ def panel(n: int = 1300, *, n_symbols: int = 2, seed0: int = 20) -> SymbolPanel:
     return SymbolPanel(bars={f"SYM{i}": bars(n, seed=seed0 + i) for i in range(n_symbols)})
 
 
+def pit_snapshot(symbols: tuple[str, ...], as_of_dt: datetime):  # type: ignore[no-untyped-def]
+    """A REAL POLYGON_PIT UniverseSnapshot over ``symbols`` (fake fetch — all active at ``as_of``).
+
+    Its ``meta.universe_hash`` is base-owned (from the @final base) and equals
+    ``membership_artifact_hash(matching_artifact(symbols, as_of_dt))`` — the unforgeable bind
+    T2 uses.
+    """
+    from trading.data.polygon_universe import PolygonPITUniverse
+
+    def _fetch(sym: str, date_str: str) -> list[dict]:
+        return [{"ticker": sym, "active": True, "delisted_utc": None, "list_date": None}]
+
+    return PolygonPITUniverse(tuple(symbols), fetch=_fetch, cache=None).as_of_members(
+        as_of=AsOf(as_of_dt)
+    )
+
+
+def matching_artifact(symbols: tuple[str, ...], as_of_dt: datetime):  # type: ignore[no-untyped-def]
+    """The MembershipArtifact whose hash == ``pit_snapshot(symbols,
+    as_of_dt).meta.universe_hash``."""
+    from trading.data.membership_artifact import MembershipArtifact, SymbolMembership
+    from trading.data.universe import SourceTier
+
+    members = tuple(SymbolMembership(s, True, None, None) for s in sorted(symbols))
+    return MembershipArtifact(1, SourceTier.POLYGON_PIT, as_of_dt, as_of_dt, members)
+
+
 def ledger(tmp_path: Path) -> TrialLedger:
     return TrialLedger(tmp_path / "trials.sqlite", clock=lambda: 1.0)
 

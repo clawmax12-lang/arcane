@@ -67,6 +67,13 @@ def t2_survivorship(
                 "fail closed (a self-attested flag can never grant a pass)"
             ),
         )
+    if not binding.traded_symbols:
+        # red-team D5: nothing-to-verify must NOT be a PASS (fail closed on ambiguity).
+        return GateComponent(
+            name=_NAME,
+            passed=False,
+            reason="no traded symbols to verify survivorship over — fail closed",
+        )
     try:
         tier_ok = artifact.source_tier == SourceTier.POLYGON_PIT and is_pit(artifact.source_tier)
         hash_ok = membership_artifact_hash(artifact) == binding.membership_artifact_hash

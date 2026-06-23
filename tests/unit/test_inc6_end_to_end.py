@@ -21,10 +21,8 @@ from trading.bias_gate.high_water_mark import NTrialsHighWaterMark
 from trading.data.membership_artifact import (
     MembershipArtifact,
     ProvenanceBinding,
-    SymbolMembership,
-    membership_artifact_hash,
+    provenance_binding_from,
 )
-from trading.data.universe import SourceTier
 from trading.executor.grant import AllocationDenied, AllocationGrant
 
 _PURGE = 200  # matches the composer fixture (>= deepest toy warmup + label_horizon)
@@ -50,24 +48,17 @@ def _pit_panel() -> SymbolPanel:
 
 
 def _binding_and_artifact(panel: SymbolPanel) -> tuple[ProvenanceBinding, MembershipArtifact]:
+    # Derive the binding from a REAL POLYGON_PIT snapshot (token-gated producer) + the panel facts —
+    # never hand-built (red-team D1). The gate cross-checks traded_symbols/window against the panel.
     syms = tuple(sorted(panel.bars.keys()))
     idx = panel.bars[syms[0]].index
-    members = tuple(
-        SymbolMembership(s, active=True, listed_utc=None, delisted_utc=None) for s in syms
-    )
-    artifact = MembershipArtifact(
-        schema_version=1,
-        source_tier=SourceTier.POLYGON_PIT,
-        as_of=fx.AS_OF.ts,
-        vintage=fx.AS_OF.ts,
-        members=members,
-    )
-    binding = ProvenanceBinding(
-        membership_artifact_hash=membership_artifact_hash(artifact),
+    snapshot = fx.pit_snapshot(syms, fx.AS_OF.ts)
+    artifact = fx.matching_artifact(syms, fx.AS_OF.ts)  # hash == snapshot.meta.universe_hash
+    binding = provenance_binding_from(
+        snapshot,
         traded_symbols=syms,
         window_start=idx.min().to_pydatetime(),
         window_end=idx.max().to_pydatetime(),
-        as_of=fx.AS_OF.ts,
     )
     return binding, artifact
 

@@ -8,8 +8,19 @@ does NOT trust the decision's ``allocated`` flag (that flag is hand-constructabl
 type-confusion CRITICAL): it requires every frozen component PRESENT and PASSED, T2 among them,
 and a
 non-blank ``spec_hash``. A killed strategy can never produce a grant, so the killed submit path is
-UNREPRESENTABLE rather than guarded-by-an-if. The grant binds ``spec_hash`` + the verified PIT
-``universe_artifact_hash``, so it is non-replayable for a different/forged strategy or universe.
+UNREPRESENTABLE rather than guarded-by-an-if.
+
+TRUST BOUNDARY (red-team D3): this is a STRUCTURAL re-check of the gate's OWN in-process
+``GateDecision`` — NOT a recompute of the verdicts from raw OOS evidence.
+``GateComponent.passed`` is
+as hand-buildable as the ``allocated`` bool, so a forged all-pass ``GateDecision`` would mint a
+grant.
+That is the accepted boundary because ``GateDecision`` is built ONLY inside ``gate.py`` and is NEVER
+deserialized from disk/JSON (a committed test pins that) — lying inside trusted gate output is
+equivalent to importing the broker directly. If ``GateDecision`` ever becomes persistable, this MUST
+become a recompute-from-evidence. ``universe_artifact_hash`` is recorded provenance (the
+verified PIT
+hash T2 bound); the survivorship gate is T2 itself, upstream, and is not re-checked downstream (D4).
 """
 
 from __future__ import annotations

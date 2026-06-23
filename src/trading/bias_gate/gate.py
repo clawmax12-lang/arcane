@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Final
 
 import numpy as np
+import pandas as pd
 
 from trading.backtest.cost_model import CostModel
 from trading.backtest.engine import BacktestEngine, SymbolPanel
@@ -166,6 +167,31 @@ def combine_member_verdict(
     return GateDecision(spec_hash, allocated, components, n_trials, reasons)
 
 
+def _t2_component(
+    result: BacktestResult,
+    binding: ProvenanceBinding | None,
+    artifact: MembershipArtifact | None,
+    panel: SymbolPanel | None,
+) -> GateComponent:
+    """T2 with a PANEL CROSS-CHECK (red-team D1): the binding's traded set + window MUST equal the
+    panel the engine actually ran, so a driver cannot bind a forged survivor-subset/window. Then run
+    the hash-bound survivorship verifier (the binding hash is itself unforgeable — token-gated)."""
+    if binding is not None and panel is not None:
+        index = next(iter(panel.bars.values())).index
+        expected_symbols = tuple(sorted(panel.bars.keys()))
+        same_window = (
+            pd.Timestamp(binding.window_start) == index.min()
+            and pd.Timestamp(binding.window_end) == index.max()
+        )
+        if binding.traded_symbols != expected_symbols or not same_window:
+            return GateComponent(
+                "T2_survivorship",
+                False,
+                "binding traded-set/window does not match the backtested panel (forged binding)",
+            )
+    return t2_survivorship(result, binding, artifact)
+
+
 def judge_member(
     evidence: GateEvidence,
     result: BacktestResult,
@@ -175,12 +201,13 @@ def judge_member(
     *,
     binding: ProvenanceBinding | None = None,
     artifact: MembershipArtifact | None = None,
+    panel: SymbolPanel | None = None,
 ) -> tuple[GateComponent, ...]:
     """The 7 PER-MEMBER components (T1/T2/DSR/PSR/WF/enough_samples/cost_stress); fail-closed.
 
     T1 already passed (``build_evidence`` raised otherwise). DSR/PSR read the per-obs recompute; the
     cost-stress requires DSR/PSR/WF to STILL hold on each higher-cost re-run. T2 binds against the
-    hash-bound PIT membership artifact (absent ⇒ fail closed).
+    hash-bound PIT membership artifact, cross-checked against the panel (absent ⇒ fail closed).
     """
     dsr = dsr_probability(evidence.oos_returns, n_trials, family_sharpes)
     psr = psr_probability(evidence.oos_returns)
@@ -192,7 +219,7 @@ def judge_member(
     )
     return (
         GateComponent("T1_consistency", True, "recompute matched the sealed result"),
-        t2_survivorship(result, binding, artifact),
+        _t2_component(result, binding, artifact, panel),
         _passes_above("DSR_deflated_sharpe", dsr, DSR_THRESHOLD),
         _passes_above("PSR_prob_sharpe", psr, PSR_THRESHOLD),
         GateComponent("WF_OOS", wf_oos_ok(result), "walk-forward OOS criterion"),
@@ -313,6 +340,7 @@ def evaluate_family(
                 stressed_evs,
                 binding=m.binding,
                 artifact=m.artifact,
+                panel=m.panel,
             )
             comps = (*member_comps, pbo_comp, spa_comp)
         decisions.append(combine_member_verdict(m.result.spec_hash, comps, n_trials))

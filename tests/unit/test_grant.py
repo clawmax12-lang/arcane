@@ -104,6 +104,17 @@ def test_grant_is_immutable() -> None:
         grant.spec_hash = "y"  # type: ignore[misc]
 
 
+def test_gatedecision_has_no_deserialization_path() -> None:
+    # red-team D3: from_decision is a STRUCTURAL re-check of trusted in-process gate output. That is
+    # safe ONLY while GateDecision is never deserialized from untrusted bytes — pin that here.
+    from trading.bias_gate.verdict import GateDecision as BiasGateDecision
+
+    for attr in ("from_json", "from_dict", "load", "loads", "parse_raw", "model_validate"):
+        assert not hasattr(
+            BiasGateDecision, attr
+        ), f"GateDecision.{attr} would turn from_decision into a deserialization sink (D3)"
+
+
 def test_decision_id_is_stable_and_binds_identity() -> None:
     d = _decision()
     g1 = AllocationGrant.from_decision(d, universe_artifact_hash=_UHASH)
