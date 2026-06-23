@@ -5,10 +5,19 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-23 · **Branch:** `build/increment-6-paper-submit` — pushed; `main` fast-forwarded.
-**Head:** `39f381e` (Inc-6 PART C) · `make inc1..inc6` → PASS (95.36% cov, `mypy --strict`, leak-lint
-clean over data + factors + backtest + bias_gate + notify + guards + executor).
+**Head:** `673dc9a` (Inc-6 red-team remediation; this STATE+backlog+memory seal sits on top) ·
+`make inc1..inc6` → PASS (95.26% cov, `mypy --strict`, leak-lint clean over data + factors + backtest +
+bias_gate + notify + guards + executor). **✅ INCREMENT 6 SEALED** — the FIRST paper-submit machinery
+(Polygon PIT universe + unforgeable hash-bound T2 + Murphy guards G1–G10 + §8 abandonment + §5.2 paging
++ the gate-gated RECORD-ONLY submit), design-panel-driven, red-team-hardened (1 HIGH latent FC-1 +
+1 MED + 3 lesser found AND closed; `wf_28153c97-0bc`, lead-reproduced). **The gate's verdict on the 4
+toys: ALL KILLED even with T2 CAPABLE** (ADR §0 success — the statistics wall holds independently).
+**ZERO paper orders submitted** — the first real order is DEFERRED to an explicit per-order operator GO
+(prereqs + tripwires in `docs/INC6-HARDENING-BACKLOG.md`). **NEXT (a future run, NOT started): the
+regime classifier + allocator** (the first real driver that wires `FamilyMember` through the gate — and
+must close the D1-residual: gate derives binding + loads the artifact from the cache). Do NOT start it.
 
-## 🔨 Increment 6 — FIRST paper submit (Polygon PIT + Murphy guards + gate-gated record-only submit) — BUILD COMPLETE; RED-TEAM NEXT
+## ✅ Increment 6 — FIRST paper submit (Polygon PIT + Murphy guards + gate-gated record-only submit) — SEALED
 
 Design panel `wf_3ad27bf2-439` (4 lenses + skeptic + synth) → `docs/INCREMENT-6-DESIGN.md`. Built in 3
 parts, 14 TDD clusters, each gated + committed + pushed + ff-main:
@@ -38,10 +47,20 @@ parts, 14 TDD clusters, each gated + committed + pushed + ff-main:
   CAPABLE of passing, the 4 toys are STILL all KILLED by the statistical wall → ZERO grants → ZERO
   orders.** LIVE smokes (excluded from gate) green vs real Polygon + Alpaca paper (read-only, NO submit).
 
+**RED-TEAM COMPLETE + REMEDIATED** (`673dc9a`). Workflow `wf_28153c97-0bc` (6 finder lenses + verifiers
++ synth; lead independently re-reproduced D1 before AND after the fix). **Verdict: ADR §0 holds — zero
+allocations/zero orders is the ACTUAL outcome; zero production callers of the acting path, so no
+externally-triggerable order exists.** Closed (TDD, gated): **D1 [HIGH, latent FC-1]** — T2 trusted a
+caller-supplied artifact↔binding hash loop; `ProvenanceBinding` is now TOKEN-GATED (only
+`provenance_binding_from` from a real POLYGON_PIT snapshot mints it) + a gate-side panel cross-check;
+**D2 [MED]** — single-use GO now consumed BEFORE `broker.submit` + fail-closed; **D5/D3/D4** — empty-set
+guard, `GateDecision` no-deserialization pin test, honest docstrings. Full triage + DEFERs + first-order
+tripwires: `docs/INC6-HARDENING-BACKLOG.md`.
+
 **The executor is wired but the FIRST real order is DEFERRED to an explicit per-order operator GO**
-(the Inc-6 hard stop). Nothing has touched a broker beyond read-only connectivity. **NEXT: red-team the
-acting surface, remediate, SEAL.** Operator open questions resolved to the recommended defaults
-(`docs/INCREMENT-6-DESIGN.md` §7); operator may override before any real GO.
+(the Inc-6 hard stop). Nothing has touched a broker beyond read-only connectivity. Operator open
+questions resolved to the recommended defaults (`docs/INCREMENT-6-DESIGN.md` §7); operator may override
+before any real GO.
 
 ---
 
