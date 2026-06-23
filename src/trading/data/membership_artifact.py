@@ -26,7 +26,7 @@ from datetime import datetime
 from typing import Any
 
 from trading.data.errors import ProvenanceBindingError
-from trading.data.universe import SourceTier, UniverseSnapshot, is_pit
+from trading.data.universe import PITMembershipProof, SourceTier, UniverseSnapshot, is_pit
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,14 +67,14 @@ _BIND_MINT = object()  # module-private sentinel — the only key that opens the
 class ProvenanceBinding:
     """The hash-bind passed ALONGSIDE a ``BacktestResult`` to T2 — the UNFORGEABLE pass key.
 
-    Constructible ONLY via ``provenance_binding_from`` (the ``_BIND_MINT`` token gate), which
-    derives
-    the ``membership_artifact_hash`` from a real ``POLYGON_PIT`` ``UniverseSnapshot`` (whose
-    ``universe_hash`` is owned by the ``@final`` base from the class tier — not author-declarable).
-    A caller therefore cannot hand-build a binding carrying a forged hash; T2's artifact must
-    hash to
-    this real value, so a fabricated artifact can never pass (red-team D1 — the FC-1 cardinal sin).
-    ``traded_symbols`` / window come from the panel the engine actually ran (the gate cross-checks).
+    Constructible ONLY via ``provenance_binding_from`` (the ``_BIND_MINT`` gate), which derives
+    the ``membership_artifact_hash`` from a ``POLYGON_PIT`` ``UniverseSnapshot`` that carries a
+    base-minted ``PITMembershipProof``. ``UniverseMeta.universe_hash`` is itself a plain field (a
+    caller can hand-build a POLYGON_PIT snapshot with a forged hash — red-team FC1-D1-REOPEN), so
+    the binding does NOT trust the snapshot's tier+hash alone: it requires the unforgeable proof the
+    ``@final as_of_members`` base mints, carrying this snapshot's exact hash. A hand-built snapshot
+    has no proof ⇒ unbindable, so a fabricated universe can never reach T2 (the FC-1 cardinal sin).
+    ``traded_symbols`` / window come from the panel the engine ran (the gate cross-checks).
     """
 
     __slots__ = (
@@ -130,14 +130,24 @@ def provenance_binding_from(
 ) -> ProvenanceBinding:
     """Mint the unforgeable T2 binding from a real POLYGON_PIT snapshot + the engine's panel facts.
 
-    The hash is taken from ``snapshot.meta.universe_hash`` (base-owned, from a real Polygon fetch) —
-    NEVER a caller-supplied string. A non-PIT snapshot is refused (only a survivorship-clean source
-    can produce a binding). ``traded_symbols`` is sorted; the gate verifies it equals the real
-    panel.
+    The hash is taken from ``snapshot.meta.universe_hash``, but ONLY after the snapshot proves it
+    was produced by the ``@final as_of_members`` base via its base-minted ``PITMembershipProof``
+    (carrying this exact hash). A hand-built POLYGON_PIT snapshot — ``universe_hash`` is a plain
+    field — has no proof and is REFUSED (red-team FC1-D1-REOPEN), as is a non-PIT snapshot.
+    ``traded_symbols`` is sorted; the gate verifies it equals the real panel.
     """
     if snapshot.meta.source_tier != SourceTier.POLYGON_PIT or not is_pit(snapshot.meta.source_tier):
         raise ProvenanceBindingError(
             f"ProvenanceBinding requires a POLYGON_PIT snapshot, got {snapshot.meta.source_tier}"
+        )
+    proof = snapshot.pit_proof
+    if not isinstance(proof, PITMembershipProof) or (
+        proof.universe_hash != snapshot.meta.universe_hash
+    ):
+        raise ProvenanceBindingError(
+            "snapshot carries no base-minted PIT proof matching its universe_hash — a hand-built "
+            "POLYGON_PIT snapshot is NOT bindable; only the @final as_of_members base can mint a "
+            "real PIT universe (red-team FC1-D1-REOPEN: universe_hash is a plain, forgeable field)"
         )
     if not traded_symbols:
         raise ProvenanceBindingError("ProvenanceBinding requires at least one traded symbol")

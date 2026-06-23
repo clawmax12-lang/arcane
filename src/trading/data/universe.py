@@ -24,7 +24,7 @@ import logging
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import ClassVar, Final, final
@@ -141,16 +141,47 @@ class UniverseMeta:
         return not self.is_pit_membership
 
 
+_PIT_PROOF_MINT = object()  # module-private mint token; only as_of_members holds it
+
+
+class PITMembershipProof:
+    """Unforgeable proof a POLYGON_PIT ``universe_hash`` was produced by the ``@final``
+    ``as_of_members`` base (a real PIT reconstruction) — NOT hand-built.
+
+    ``UniverseMeta.universe_hash`` is a PLAIN field, so a caller could otherwise hand-build a
+    POLYGON_PIT snapshot carrying a FORGED hash and bind it with no Polygon fetch (red-team
+    FC1-D1-REOPEN — the FC-1 cardinal sin). This proof is constructible ONLY via the module-private
+    ``_PIT_PROOF_MINT`` token; ``provenance_binding_from`` requires it AND that it carries this
+    snapshot's exact hash — so a forged snapshot is unbindable and a genuine proof cannot be spliced
+    onto a different hash.
+    """
+
+    __slots__ = ("universe_hash",)
+    universe_hash: str
+
+    def __init__(self, *, universe_hash: str, _token: object) -> None:
+        if _token is not _PIT_PROOF_MINT:
+            raise UniverseSourceError(
+                "PITMembershipProof is minted only by the @final universe base (as_of_members)"
+            )
+        object.__setattr__(self, "universe_hash", universe_hash)
+
+    def __setattr__(self, name: str, value: object) -> None:  # frozen
+        raise AttributeError("PITMembershipProof is immutable")
+
+
 @dataclass(frozen=True, slots=True)
 class UniverseSnapshot:
     """Consumer-facing result (``LoadResult`` analogue): immutable symbols + inseparable provenance.
 
     No public path returns the symbols without the meta attached, so survivorship status can never
-    be read off the symbol set alone.
+    be read off the symbol set alone. ``pit_proof`` is the base-minted authenticity token (PIT tiers
+    only; ``None`` otherwise) — provenance, not identity (excluded from eq/repr).
     """
 
     symbols: frozenset[str]
     meta: UniverseMeta
+    pit_proof: PITMembershipProof | None = field(default=None, compare=False, repr=False)
 
     @property
     def as_of(self) -> datetime:
@@ -210,6 +241,14 @@ class PITUniverse(ABC):
             membership_vintage=vintage,
             loader=type(self).__name__,
         )
+        # The base mints the unforgeable PIT authenticity proof (PIT tiers only) so a downstream
+        # consumer can bind ONLY a snapshot this @final base actually produced — a hand-built
+        # POLYGON_PIT snapshot has no proof and is unbindable (red-team FC1-D1-REOPEN).
+        pit_proof = (
+            PITMembershipProof(universe_hash=universe_hash, _token=_PIT_PROOF_MINT)
+            if is_pit(tier)
+            else None
+        )
         logger.info(
             "universe.snapshot as_of=%s session=%s source_tier=%s member_count=%d "
             "universe_hash=%s degraded=%s",
@@ -220,7 +259,7 @@ class PITUniverse(ABC):
             universe_hash[:8],
             meta.survivorship_unverified,
         )
-        return UniverseSnapshot(symbols=frozenset(symbols), meta=meta)
+        return UniverseSnapshot(symbols=frozenset(symbols), meta=meta, pit_proof=pit_proof)
 
     @abstractmethod
     def _members(self, as_of: AsOf, session: pd.Timestamp) -> tuple[frozenset[str], str]:

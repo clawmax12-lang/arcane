@@ -72,3 +72,57 @@ def test_binding_is_immutable() -> None:
     )
     with pytest.raises(AttributeError):
         binding.membership_artifact_hash = "x"  # type: ignore[misc]
+
+
+def test_hand_built_pit_snapshot_is_unbindable_fc1_d1_reopen() -> None:
+    # red-team FC1-D1-REOPEN: UniverseMeta.universe_hash is a PLAIN field, so a caller could
+    # hand-build a POLYGON_PIT snapshot carrying a FORGED hash (no Polygon fetch) and — pre-fix —
+    # mint a binding that PASSED T2. The base-minted PITMembershipProof closes it: a hand-built
+    # snapshot has no proof, so it is structurally unbindable (the forge is unrepresentable).
+    import pandas as pd
+
+    from trading.data.membership_artifact import MembershipArtifact, SymbolMembership
+    from trading.data.universe import SourceTier, UniverseMeta, UniverseSnapshot
+
+    forged_art = MembershipArtifact(
+        1, SourceTier.POLYGON_PIT, _AS_OF, _AS_OF, (SymbolMembership("AAPL", True, None, None),)
+    )
+    forged_hash = membership_artifact_hash(forged_art)
+    forged_meta = UniverseMeta(
+        as_of=_AS_OF,
+        session=pd.Timestamp("2023-06-01"),
+        source_tier=SourceTier.POLYGON_PIT,
+        is_pit_membership=True,
+        member_count=1,
+        universe_hash=forged_hash,
+        loader="FORGED",
+        membership_vintage=_AS_OF,
+    )
+    forged_snap = UniverseSnapshot(symbols=frozenset({"AAPL"}), meta=forged_meta)  # no base proof
+    with pytest.raises(ProvenanceBindingError):
+        provenance_binding_from(
+            forged_snap, traded_symbols=("AAPL",), window_start=_WS, window_end=_WE
+        )
+
+
+def test_a_real_proof_cannot_be_spliced_onto_a_different_hash() -> None:
+    # defense-in-depth: a genuine proof bound to snapshot A's hash must not validate a meta carrying
+    # a DIFFERENT (forged) hash — the proof is checked to carry this snapshot's exact hash.
+    import pandas as pd
+
+    from trading.data.universe import SourceTier, UniverseMeta, UniverseSnapshot
+
+    real = fx.pit_snapshot(("AAPL", "MSFT"), _AS_OF)
+    forged_meta = UniverseMeta(
+        as_of=_AS_OF,
+        session=pd.Timestamp("2023-06-01"),
+        source_tier=SourceTier.POLYGON_PIT,
+        is_pit_membership=True,
+        member_count=1,
+        universe_hash="arcane-univ-different-forged",
+        loader="X",
+        membership_vintage=_AS_OF,
+    )
+    spliced = UniverseSnapshot(symbols=real.symbols, meta=forged_meta, pit_proof=real.pit_proof)
+    with pytest.raises(ProvenanceBindingError):
+        provenance_binding_from(spliced, traded_symbols=("AAPL",), window_start=_WS, window_end=_WE)
