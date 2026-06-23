@@ -12,3 +12,12 @@ a KILL, never a pass. See ``docs/INCREMENT-5-DESIGN.md``.
 """
 
 from __future__ import annotations
+
+from trading.bias_gate.gate import (
+    FamilyMember,
+    GateComponent,
+    GateDecision,
+    evaluate_family,
+)
+
+__all__ = ["FamilyMember", "GateComponent", "GateDecision", "evaluate_family"]

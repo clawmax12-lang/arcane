@@ -9,7 +9,7 @@ default-True else-branch that could leak a clean pass.
 from __future__ import annotations
 
 from trading.backtest.statistics import BacktestResult
-from trading.bias_gate.gate import GateComponent
+from trading.bias_gate.verdict import GateComponent
 
 _NAME = "T2_survivorship"
 
