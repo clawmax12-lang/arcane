@@ -5,17 +5,16 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-23 · **Branch:** `build/increment-6-paper-submit` — pushed; `main` fast-forwarded.
-**Head:** `673dc9a` (Inc-6 red-team remediation; this STATE+backlog+memory seal sits on top) ·
-`make inc1..inc6` → PASS (95.26% cov, `mypy --strict`, leak-lint clean over data + factors + backtest +
-bias_gate + notify + guards + executor). **✅ INCREMENT 6 SEALED** — the FIRST paper-submit machinery
-(Polygon PIT universe + unforgeable hash-bound T2 + Murphy guards G1–G10 + §8 abandonment + §5.2 paging
-+ the gate-gated RECORD-ONLY submit), design-panel-driven, red-team-hardened (1 HIGH latent FC-1 +
-1 MED + 3 lesser found AND closed; `wf_28153c97-0bc`, lead-reproduced). **The gate's verdict on the 4
-toys: ALL KILLED even with T2 CAPABLE** (ADR §0 success — the statistics wall holds independently).
-**ZERO paper orders submitted** — the first real order is DEFERRED to an explicit per-order operator GO
-(prereqs + tripwires in `docs/INC6-HARDENING-BACKLOG.md`). **NEXT (a future run, NOT started): the
-regime classifier + allocator** (the first real driver that wires `FamilyMember` through the gate — and
-must close the D1-residual: gate derives binding + loads the artifact from the cache). Do NOT start it.
+**Head:** `99e1819` (Inc-6 red-team ROUND 2 remediation; this STATE+backlog+memory seal sits on top) ·
+`make inc1..inc6` → PASS (95.21% cov, `mypy --strict`, leak-lint clean over data + factors + backtest +
+bias_gate + notify + guards + executor). **✅ INCREMENT 6 SEALED + RE-AUDITED (round 2)** — the FIRST
+paper-submit machinery (Polygon PIT universe + unforgeable hash-bound T2 + Murphy guards G1–G10 + §8
+abandonment + §5.2 paging + the gate-gated RECORD-ONLY submit), design-panel-driven, red-team-hardened
+across TWO independent rounds. **The gate's verdict on the 4 toys: ALL KILLED even with T2 CAPABLE**
+(ADR §0 success — the statistics wall holds independently). **ZERO paper orders submitted** — the first
+real order is DEFERRED to an explicit per-order operator GO (prereqs + tripwires in
+`docs/INC6-HARDENING-BACKLOG.md`). **NEXT (a future run, NOT started): the regime classifier + allocator**
+(the first real driver that wires `FamilyMember` through the gate). Do NOT start it.
 
 ## ✅ Increment 6 — FIRST paper submit (Polygon PIT + Murphy guards + gate-gated record-only submit) — SEALED
 
@@ -56,6 +55,21 @@ caller-supplied artifact↔binding hash loop; `ProvenanceBinding` is now TOKEN-G
 **D2 [MED]** — single-use GO now consumed BEFORE `broker.submit` + fail-closed; **D5/D3/D4** — empty-set
 guard, `GateDecision` no-deserialization pin test, honest docstrings. Full triage + DEFERs + first-order
 tripwires: `docs/INC6-HARDENING-BACKLOG.md`.
+
+**RED-TEAM ROUND 2 — independent re-audit + REMEDIATED** (`99e1819`). A fresh acting-surface Workflow
+(`wf_eb53b8c9-d48`, 6 lenses) re-audited the seal. Finders ran (25 findings) but Verify/Synth were 100%
+rate-limited → I verified the CRITICAL single-threaded with my own repro. **FC1-D1-REOPEN [CRITICAL,
+reachable] — the round-1 D1 fix was INCOMPLETE.** `ProvenanceBinding` was token-gated, but
+`UniverseMeta.universe_hash` is a plain caller-settable field, so a hand-built POLYGON_PIT
+`UniverseSnapshot` carrying a forged hash minted a real binding and PASSED T2 with NO Polygon fetch —
+the FC-1 cardinal sin re-opened (latent: zero production callers). **Fixed**: the `@final as_of_members`
+base now mints an unforgeable `PITMembershipProof`; `provenance_binding_from` REQUIRES it + an exact
+hash match, so a hand-built snapshot is structurally unbindable (the overclaimed "not author-declarable"
+docstrings were corrected). Verified end-to-end: the exact forge now raises `ProvenanceBindingError`.
+DEFERRED to the driver increment (operator-approved, MED/latent — they only bite once a driver acts):
+GRD-1 §5.2 ladder never armed, GRD-2 paging fails-open silently, GRD-3 §8 doesn't auto-flatten, GRD-4
+kill-switch not durable across `state/` deletion, PHI1-3 AST scan covers only executor/+guards/+risk/
+(not the full submit-path closure). See `docs/INC6-HARDENING-BACKLOG.md` → "Red-team ROUND 2".
 
 **The executor is wired but the FIRST real order is DEFERRED to an explicit per-order operator GO**
 (the Inc-6 hard stop). Nothing has touched a broker beyond read-only connectivity. Operator open

@@ -86,3 +86,44 @@ The executor is wired but DEFERRED from submitting; before any real paper order:
 3. **All four prereqs (Inc-6 hard stop) must hold:** Polygon PIT wired (done), every Murphy guard + §8
    trigger tested green (done), a live Telegram pager (done), AND the per-order GO. With the $1 cap and
    real share prices, sizing yields ZERO shares — the expected outcome under a GO is STILL NoTrade.
+
+---
+
+# Red-team ROUND 2 — independent re-audit (`wf_eb53b8c9-d48`, 2026-06-23)
+
+**Why:** the operator asked for an independent re-check of the seal. A fresh 6-lens acting-surface
+red-team ran on `a523ec0`. **Method (honest):** finders completed (25 findings) but the Verify +
+Synthesize phases were 100% rate-limited (infra). Per `insight-autonomous-quality-discipline` a throttled
+"0 confirmed" is NOT a pass, so the lead verified the CRITICAL single-threaded with an own repro. Lenses
+that came back CLEAN match round 1: grant-forgery (token gate holds), submit-authorization (no SUBMIT_GO
+⇒ RECORD_ONLY; D2 closed; caps inviolable), PHI1 (no LLM in the runtime submit closure today),
+zero-order-invariant (structural, not incidental).
+
+## FIX-NOW — DONE (remediated in `99e1819`, TDD + gated; `make inc1..inc6` green, 95.21%)
+- **[CRITICAL, reachable] FC1-D1-REOPEN — the round-1 D1 fix was INCOMPLETE.** `ProvenanceBinding` was
+  token-gated, but `provenance_binding_from` trusted any POLYGON_PIT `UniverseSnapshot`, and
+  `UniverseMeta.universe_hash` is a **plain caller-settable field**. So a hand-built POLYGON_PIT snapshot
+  carrying a forged hash minted a real binding and PASSED T2 with NO Polygon fetch — the FC-1 cardinal
+  sin re-opened. Lead-verified end-to-end (forged universe → `passed=True`). LATENT (zero production
+  callers; even past T2 the submit path is RECORD_ONLY + $1 cap), but the seal had OVERCLAIMED it
+  "unrepresentable". **Fix:** the `@final as_of_members` base mints an unforgeable `PITMembershipProof`
+  (PIT tiers only, module-private `_PIT_PROOF_MINT`); `provenance_binding_from` now requires it AND that
+  it carries the snapshot's exact `universe_hash`. A hand-built snapshot has no proof ⇒ structurally
+  unbindable; a genuine proof cannot be spliced onto a forged meta. Overclaimed docstrings corrected.
+  Tests: `test_hand_built_pit_snapshot_is_unbindable_fc1_d1_reopen` + a proof-splice must-fail.
+
+## DEFER to the driver/allocator increment (operator-approved; MED/latent — only bite once a driver acts)
+- **GRD-1 [MED]** §5.2 escalation ladder is wired-but-never-armed: `open_page()` has no runtime caller,
+  so the 15/30/60-min resend + terminal auto-liquidate never fire in the wired loop.
+- **GRD-2 [MED]** operator paging fails OPEN silently: a re-raised RED `NotifierError` is swallowed by
+  every consumer; nothing retries.
+- **GRD-3 [MED]** §8 abandonment hard-stops but does NOT auto-flatten open positions (only RED guards /
+  recon do); combined with GRD-1 a position could be left un-managed.
+- **GRD-4 [MED]** a latched HARD_STOP is not durable across deletion of `state/kill_switch.json`
+  (same class as the ledger-deletion residual — operator/Murphy territory).
+- **PHI1-3 [MED, reach=false today]** the PHI1 AST tests scan only `executor/+guards/+risk/`, but the
+  submit-path runtime closure also reaches `bias_gate/data/notify/backtest/factors`; widen the scan so a
+  future banned import there is caught. (No LLM import exists today.)
+These were red-team-reported and are consistent with the code read; the driver increment that wires the
+acting loop (and arms paging/abandonment auto-flat) is their natural home — fix them there with the
+driver, before any real order.
