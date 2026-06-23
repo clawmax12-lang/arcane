@@ -187,14 +187,11 @@ class BacktestEngine:
         gross = pd.DataFrame(gross_by_symbol).mean(axis=1)
         turnover = pd.DataFrame(turn_by_symbol).mean(axis=1)
         self._assert_value_adequacy(net)
-        # net <= gross by construction (cost >= 0); assert it so a sign error fails closed.
-        if bool(
-            (
-                net.to_numpy(dtype="float64", na_value=0.0)
-                > gross.to_numpy(dtype="float64", na_value=0.0) + 1e-12
-            ).any()
-        ):
-            raise BacktestContractError("net return exceeded gross — cost applied with wrong sign")
+        # net <= gross by construction (cost >= 0); assert it so a cost-sign bug fails closed.
+        net_arr = net.to_numpy(dtype="float64", na_value=0.0)
+        gross_arr = gross.to_numpy(dtype="float64", na_value=0.0)
+        if bool((net_arr > gross_arr + 1e-12).any()):  # pragma: no cover - defensive (cost >= 0)
+            raise BacktestContractError("net exceeded gross — cost applied with the wrong sign")
 
         per_fold = tuple(annualized_sharpe(net.loc[f.test]) for f in fold_list)
         oos_bars = sum(len(f.test) for f in fold_list)

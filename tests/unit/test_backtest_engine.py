@@ -190,6 +190,27 @@ def test_inf_weight_fails_closed() -> None:
         BacktestEngine._assert_positions(bad, idx, "x")
 
 
+def test_misaligned_positions_fail_closed() -> None:
+    idx = pd.DatetimeIndex(pd.bdate_range("2020-01-01", periods=3, tz="UTC"), name="ts")
+    short = pd.Series([0.1, 0.2], index=idx[:2], dtype="float64")  # wrong length
+    with pytest.raises(BacktestContractError):
+        BacktestEngine._assert_positions(short, idx, "x")
+
+
+def test_non_monotonic_panel_fails_closed(tmp_path: object) -> None:
+    resolved = _resolved(tmp_path)
+    reversed_bars = _bars(400, seed=1).iloc[::-1]  # descending index -> non-monotonic
+    with pytest.raises(BacktestContractError):
+        BacktestEngine().run(
+            resolved,
+            SymbolPanel(bars={"X": reversed_bars}),
+            as_of=_AS_OF,
+            ledger=_ledger(tmp_path),
+            cost=CostModel(),
+            folds=WalkForwardConfig(),
+        )
+
+
 def test_run_rejects_raw_unresolved_spec(tmp_path: object) -> None:
     spec = default_strategies()[0]
     with pytest.raises(BacktestContractError):
