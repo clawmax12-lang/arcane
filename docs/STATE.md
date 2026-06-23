@@ -5,15 +5,18 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-23 · **Branch:** `build/increment-5-bias-gate` — pushed; `main` fast-forwarded to it.
-**Head:** `6f0f591` (Inc-5 build C10; red-team + seal sit on top) · `make inc1` AND `inc2` AND `inc3`
-AND `inc4` AND `inc5` → PASS (95.83% cov, `mypy --strict`, leak-lint clean over data + factors +
-backtest + bias_gate + notify). **✅ INC 2/3/4 SEALED.** **🔨 INCREMENT 5 — BUILD COMPLETE, RED-TEAM
-NEXT:** the ALL-of bias/kill gate (DSR/PSR/PBO/SPA + WF-OOS, accept-or-KILL) + the 4 carried tripwires
-+ a Telegram notifier (live-verified). The FIRST paper submit is **DEFERRED** to a future run
-(operator-approved 2026-06-23 — executor still NO-OP, Murphy guards G1–G10 unwired). Resume pointer:
-red-team the gate's teeth, remediate, SEAL.
+**Head:** `1150d30` (Inc-5 red-team remediation; this STATE+backlog+memory seal sits on top) · `make
+inc1` AND `inc2` AND `inc3` AND `inc4` AND `inc5` → PASS (95.89% cov, `mypy --strict`, leak-lint clean
+over data + factors + backtest + bias_gate + notify). **✅ INC 2/3/4 SEALED.** **✅ INCREMENT 5
+SEALED** — the ALL-of bias/kill gate (DSR/PSR/PBO/SPA + WF-OOS, accept-or-KILL) + the 4 carried
+tripwires + a Telegram notifier (live-verified), design-panel-driven, red-team-hardened (1 critical +
+1 high + 2 latent fail-opens found AND closed; `wf_fa2cf190-080`, not throttled). **The gate's verdict
+on the 4 toys: ALL KILLED** (ADR §0 success — no edge on a survivorship-unverified universe). **The
+FIRST paper submit is DEFERRED** to a future run (operator-approved — executor still NO-OP, Murphy
+guards G1–G10 unwired). **NEXT (a future run, NOT started): the FIRST paper submit + Murphy guards +
+§8 abandonment loop** (prereqs in `docs/INC5-HARDENING-BACKLOG.md`). Do NOT start Inc 6.
 
-## 🔨 Increment 5 — ALL-of bias/kill gate + Telegram notifier (BUILD COMPLETE; red-team pending)
+## ✅ Increment 5 — ALL-of bias/kill gate + Telegram notifier (SEALED)
 
 Design panel `wf_e2d07d5c-8e3` (4 lenses + skeptic + synth) → `docs/INCREMENT-5-DESIGN.md`; **operator
 checkpoint signed all conservative**: threshold table verbatim (DSR>0.95, PSR>0.95, PBO<0.5, SPA p<0.05,
@@ -45,9 +48,16 @@ No ADR change, no Inc-4 reopen, no new dep (pure-numpy erf/Acklam; scipy absent)
 **THE GATE'S VERDICT ON THE 4 TOYS: all KILLED** (ADR §0 success — no edge survives on a
 survivorship-unverified universe; T2 alone forces it, the statistics gate is the independent 2nd wall).
 
-**NEXT: red-team the gate's TEETH** (a known-overfit/ruined/NaN-OOS/single-lucky-fold strategy MUST be
-KILLED; n_trials can't be under-counted; HWM can't be reset; the executor can never submit a killed
-strategy or exceed a cap; the notifier can't leak a secret), remediate fix-now, then SEAL.
+**RED-TEAM COMPLETE + REMEDIATED** (`1150d30`). Workflow `wf_fa2cf190-080` (6 finder lenses + 3
+verifiers + synth, **NOT throttled**; lead independently re-reproduced every fix-now AND every close).
+5 of 6 lenses found no reachable fail-open. **4 fix-now closed** (TDD + gated): **FC-1 [CRITICAL]** —
+T2 survivorship was flippable to PASS via the forgeable `SymbolPanel(survivorship_unverified=False)`
+kwarg → full ALLOCATE (the cardinal sin); fixed by making T2 fail CLOSED unconditionally while no PIT
+verifier is wired (`_PIT_VERIFIER_WIRED=False`). **TT-1 [HIGH]** — a constant-nonzero column slipped
+the exact `omega==0` guard → SPA/PBO PASS; fixed by rejecting any constant column in
+`_matrix_is_admissible`. **NOTIFY-1 [MED]** — `httpx.InvalidURL` (not an HTTPError) escaped the catch;
+fixed by re-wrapping ANY exception token-free. **FC-3** — vacuous `all([])` + SPA S=1; hardened. Full
+triage + DEFERs + carried submit-tripwires: `docs/INC5-HARDENING-BACKLOG.md`.
 
 ---
 
