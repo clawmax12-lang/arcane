@@ -142,7 +142,12 @@ def test_t2_never_passes_for_shipped_tiers() -> None:
         assert res.reason  # non-empty
 
 
-def test_no_shipped_subclass_declares_polygon_pit() -> None:
+def test_only_polygon_source_declares_polygon_pit_and_wires_provenance() -> None:
+    # Increment 6: the ONE sanctioned PIT source is PolygonPITUniverse. Any class declaring
+    # POLYGON_PIT must (a) be that sanctioned class and (b) override ``_membership_provenance`` —
+    # otherwise the base default RAISES (fail closed) and a half-wired PIT source can never mint a
+    # survivorship-clean meta. This replaces the Inc-2 "no PIT source at all" tripwire.
+    sanctioned = {"PolygonPITUniverse"}
     offenders: list[str] = []
     for py in _DATA_DIR.glob("*.py"):
         tree = ast.parse(py.read_text(encoding="utf-8"))
@@ -151,6 +156,7 @@ def test_no_shipped_subclass_declares_polygon_pit() -> None:
                 continue
             if "PITUniverse" not in {b.id for b in node.bases if isinstance(b, ast.Name)}:
                 continue
+            declares_pit = False
             for stmt in node.body:
                 val: ast.expr | None = None
                 if isinstance(stmt, ast.Assign) and any(
@@ -160,8 +166,16 @@ def test_no_shipped_subclass_declares_polygon_pit() -> None:
                 elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
                     val = stmt.value if stmt.target.id == "SOURCE_TIER" else None
                 if isinstance(val, ast.Attribute) and val.attr == "POLYGON_PIT":
-                    offenders.append(f"{py.name}:{node.name}")
-    assert not offenders, f"a shipped subclass declares POLYGON_PIT: {offenders}"
+                    declares_pit = True
+            if not declares_pit:
+                continue
+            overrides_provenance = any(
+                isinstance(s, ast.FunctionDef) and s.name == "_membership_provenance"
+                for s in node.body
+            )
+            if node.name not in sanctioned or not overrides_provenance:
+                offenders.append(f"{py.name}:{node.name} (provenance={overrides_provenance})")
+    assert not offenders, f"unsanctioned / half-wired POLYGON_PIT source: {offenders}"
 
 
 def test_bias_test_result_rejects_silent_false() -> None:

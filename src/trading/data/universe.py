@@ -79,6 +79,22 @@ def is_pit(tier: SourceTier) -> bool:
 
 
 @dataclass(frozen=True, slots=True)
+class MembershipProvenance:
+    """Inert provenance a PIT subclass supplies to the ``@final`` base (Increment 6 PART A).
+
+    Carries ONLY data — a real ``vintage`` (the as-of reconstruction date) and the content-addressed
+    membership-artifact ``artifact_hash``. There is NO boolean verdict here: ``is_pit_membership``
+    stays a pure function of the class tier (the base owns it), so a subclass can influence WHICH
+    vintage/hash but never WHETHER the universe is survivorship-clean. ``UniverseMeta``
+    independently re-validates the vintage (``vintage <= as_of``). This is the deliberate,
+    forge-proof way to open the Inc-2 "upgrade tripwire" the base left for a Polygon PIT source.
+    """
+
+    vintage: datetime
+    artifact_hash: str
+
+
+@dataclass(frozen=True, slots=True)
 class UniverseMeta:
     """Immutable provenance for a snapshot — the ``BarMeta`` analogue; cannot be stripped."""
 
@@ -174,13 +190,24 @@ class PITUniverse(ABC):
             )
         self._assert_well_formed(symbols)
         tier = type(self).SOURCE_TIER
+        # PIT tiers (and only PIT tiers) supply a real vintage + provenance hash. The base, not the
+        # subclass, decides whether the hook is consulted — a non-PIT class physically cannot supply
+        # a vintage, and a PIT class that forgets the hook fails CLOSED (the base default RAISES).
+        if is_pit(tier):
+            prov = self._membership_provenance(as_of, sess)  # may RAISE -> fail closed
+            vintage: datetime | None = prov.vintage
+            universe_hash = prov.artifact_hash  # the membership-artifact hash IS the provenance
+        else:
+            vintage = None
+            universe_hash = artifact_hash
         meta = UniverseMeta(
             as_of=as_of.ts,
             session=sess,
             source_tier=tier,
             is_pit_membership=is_pit(tier),  # BASE owns the verdict, derived from the class tier
             member_count=len(symbols),
-            universe_hash=artifact_hash,
+            universe_hash=universe_hash,
+            membership_vintage=vintage,
             loader=type(self).__name__,
         )
         logger.info(
@@ -190,7 +217,7 @@ class PITUniverse(ABC):
             sess,
             tier,
             len(symbols),
-            artifact_hash[:8],
+            universe_hash[:8],
             meta.survivorship_unverified,
         )
         return UniverseSnapshot(symbols=frozenset(symbols), meta=meta)
@@ -198,6 +225,17 @@ class PITUniverse(ABC):
     @abstractmethod
     def _members(self, as_of: AsOf, session: pd.Timestamp) -> tuple[frozenset[str], str]:
         """Return ``(symbols, content-addressed artifact hash)``. The ONLY subclass hook."""
+
+    def _membership_provenance(self, as_of: AsOf, session: pd.Timestamp) -> MembershipProvenance:
+        """PIT-only hook: supply ``(vintage, artifact_hash)``. Base default fails CLOSED.
+
+        A PIT-tier subclass MUST override this; the base default RAISES so a PIT source that forgets
+        to wire real provenance can never None-default into a survivorship-clean meta. Non-PIT tiers
+        never reach this (the base branches on ``is_pit(tier)``).
+        """
+        raise RestatedMembershipError(
+            f"{type(self).__name__} is a PIT tier but supplied no membership provenance"
+        )
 
     @staticmethod
     def _assert_well_formed(symbols: frozenset[str]) -> None:

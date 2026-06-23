@@ -53,6 +53,7 @@ from trading.bias_gate.thresholds import (
 )
 from trading.bias_gate.trial_identity import eval_trial_params
 from trading.bias_gate.verdict import GateComponent, GateDecision
+from trading.data.membership_artifact import MembershipArtifact, ProvenanceBinding
 from trading.data.pit import AsOf
 from trading.factors.trial_ledger import TrialLedger
 
@@ -86,7 +87,9 @@ class FamilyMember:
     """One candidate bundle: the resolved strategy, its panel/cost/folds, and the sealed result.
 
     The driver runs ``BacktestEngine.run`` to produce ``result`` (and assert A3 purge) BEFORE the
-    gate sees it; the gate re-derives the OOS series and re-checks consistency (T1).
+    gate sees it; the gate re-derives the OOS series and re-checks consistency (T1). ``binding`` +
+    ``artifact`` carry the hash-bound Polygon PIT membership the T2 verifier checks against; absent
+    (the toys, any non-PIT universe) ⇒ T2 fails CLOSED and the member is KILLED.
     """
 
     strategy: ResolvedStrategy
@@ -95,6 +98,8 @@ class FamilyMember:
     folds: WalkForwardConfig
     as_of: AsOf
     result: BacktestResult
+    binding: ProvenanceBinding | None = None
+    artifact: MembershipArtifact | None = None
 
 
 def _wf_ok(sharpe: float, frac: float, n_folds: int, train: int, test: int, step: int) -> bool:
@@ -167,11 +172,15 @@ def judge_member(
     n_trials: int,
     family_sharpes: Sequence[float],
     stressed_evidences: Sequence[GateEvidence],
+    *,
+    binding: ProvenanceBinding | None = None,
+    artifact: MembershipArtifact | None = None,
 ) -> tuple[GateComponent, ...]:
     """The 7 PER-MEMBER components (T1/T2/DSR/PSR/WF/enough_samples/cost_stress); fail-closed.
 
     T1 already passed (``build_evidence`` raised otherwise). DSR/PSR read the per-obs recompute; the
-    cost-stress requires DSR/PSR/WF to STILL hold on each higher-cost re-run.
+    cost-stress requires DSR/PSR/WF to STILL hold on each higher-cost re-run. T2 binds against the
+    hash-bound PIT membership artifact (absent ⇒ fail closed).
     """
     dsr = dsr_probability(evidence.oos_returns, n_trials, family_sharpes)
     psr = psr_probability(evidence.oos_returns)
@@ -183,7 +192,7 @@ def judge_member(
     )
     return (
         GateComponent("T1_consistency", True, "recompute matched the sealed result"),
-        t2_survivorship(result),
+        t2_survivorship(result, binding, artifact),
         _passes_above("DSR_deflated_sharpe", dsr, DSR_THRESHOLD),
         _passes_above("PSR_prob_sharpe", psr, PSR_THRESHOLD),
         GateComponent("WF_OOS", wf_oos_ok(result), "walk-forward OOS criterion"),
@@ -296,7 +305,15 @@ def evaluate_family(
             )
         else:
             main_ev, stressed_evs = built[i]
-            member_comps = judge_member(main_ev, m.result, n_trials, family_sharpes, stressed_evs)
+            member_comps = judge_member(
+                main_ev,
+                m.result,
+                n_trials,
+                family_sharpes,
+                stressed_evs,
+                binding=m.binding,
+                artifact=m.artifact,
+            )
             comps = (*member_comps, pbo_comp, spa_comp)
         decisions.append(combine_member_verdict(m.result.spec_hash, comps, n_trials))
     return tuple(decisions)

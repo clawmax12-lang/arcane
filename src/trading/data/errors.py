@@ -85,6 +85,11 @@ class UniverseSourceError(UniverseError):
     """An unmapped/unknown SourceTier reached the PIT whitelist (fail-closed)."""
 
 
+class PolygonProvenanceError(DataError):
+    """A Polygon PIT reference query failed (429/timeout/non-200/network/malformed) — artifact
+    construction ABORTS and NO partial/clean membership set is ever sealed (fail closed)."""
+
+
 class PrefixStabilityError(DataError):
     """A registered computation broke the prefix-stability property (a look-ahead leak by
     construction): ``compute(df[:k]) != compute(df[:k+1])[:k]`` for some k."""

@@ -37,3 +37,6 @@ state/
 htmlcov/
 dist/
 *.egg-info/
+
+# workflow scratch scripts (not source)
+/.wf/
