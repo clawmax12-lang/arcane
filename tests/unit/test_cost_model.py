@@ -114,6 +114,15 @@ def test_non_finite_position_fails_closed() -> None:
         cm.per_bar_cost(_pos([1.0, float("inf")]))
 
 
+def test_overflowing_total_bps_fails_closed() -> None:
+    # red-team M3-COST-01: each bps field is finite, but total_bps re-multiplies and can overflow to
+    # +inf; a non-finite cost would be silently masked by statistics._finite() -> fail CLOSED.
+    cm = CostModel(commission_bps=1e308, half_spread_bps=1e308, slippage_bps=1e308)
+    assert not np.isfinite(cm.total_bps)
+    with pytest.raises(CostModelError):
+        cm.per_bar_cost(_pos([1.0, 1.0]))
+
+
 def test_empty_position_returns_empty_cost() -> None:
     cm = CostModel()
     cost = cm.per_bar_cost(_pos([]))

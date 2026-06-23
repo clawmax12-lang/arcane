@@ -229,11 +229,15 @@ Reuse `data/prefix_stability.assert_prefix_stable` UNCHANGED via TWO `PrefixComp
   **FULL-panel checks, NO per-fold slice optimization** (`insight-gate-optimization-can-weaken`).
 
 **MUST-FAIL canaries (a green here with the bug present = the gate lost its teeth):**
-1. `RealizedView` MUST FAIL on an engine variant using a forward return (`close.shift(-1)/close-1`) or
-   dropping the execution shift.
-2. Per-bar value test: `realized[t] == position[t-1]*(close[t]/close[t-1]-1) - cost[t]` at a hand bar.
-3. **Perfect-foresight off-by-one canary:** a synthetic factor returning the next-bar return yields a
-   flat/near-zero OOS curve under the correct lag and a blatantly positive one under the off-by-one.
+1. `RealizedView` (prefix-stability) MUST FAIL on an engine variant that reads FUTURE data — a forward
+   return (`close.shift(-1)/close-1`), a `signal.shift(-1)` map, or a full-sample normalization.
+   **NOTE (red-team F1, empirically verified):** prefix-stability does NOT catch a *dropped execution
+   shift* — `target_w * close.pct_change()` (no shift) is still causal (reads only ≤ t), it is merely
+   mis-lagged. The dropped-shift off-by-one is caught by canaries (2) and (3), NOT by `RealizedView`.
+2. Per-bar value test: `realized[t] == position[t-1]*(close[t]/close[t-1]-1) - cost[t]` at a hand bar
+   (catches a wrong shift COUNT — dropped shift or double shift).
+3. **Perfect-foresight off-by-one canary:** a contemporaneous-foresight position earns ~flat under the
+   correct execution lag and a blatant profit with the shift dropped — the semantic off-by-one check.
 4. `PositionView` MUST FAIL for a `signal.shift(-1)` mapping AND for a full-sample-normalized mapping
    (`signal / signal.std(whole frame)`).
 5. GUARD-B: a mapping returning an `inf` weight RAISES (not a saturated bet).

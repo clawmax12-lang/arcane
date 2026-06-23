@@ -77,4 +77,10 @@ class CostModel(BaseModel):
 
     def per_bar_cost(self, position: pd.Series) -> pd.Series:
         """Per-bar cost (fraction of capital) = total_bps * 1e-4 * turnover (fail-closed)."""
-        return self.total_bps * _BPS * self.turnover(position)
+        # The bps fields are individually finite (allow_inf_nan=False), but total_bps RE-MULTIPLIES
+        # them by cost_scale, so an absurd config could overflow to +inf. A non-finite cost would be
+        # silently masked by statistics._finite() (red-team M3-COST-01); fail CLOSED instead.
+        bps = self.total_bps
+        if not np.isfinite(bps):
+            raise CostModelError(f"total_bps is non-finite ({bps}); cost would NaN-mask a fold")
+        return bps * _BPS * self.turnover(position)

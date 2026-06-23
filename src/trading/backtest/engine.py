@@ -179,7 +179,10 @@ class BacktestEngine:
             self._assert_positions(target_w, bars.index, strategy.name)
             executed = _executed(target_w)
             close = bars["close"].astype("float64")
-            gross_by_symbol[sym] = executed * close.pct_change()
+            # fill_method=None is the pandas-3 default, but pin it explicitly so a future pandas
+            # cannot silently pad over a NaN price hole (a fabricated cross-hole return) — red-team
+            # RT03. The factor layer never sees this; the engine owns every return computation.
+            gross_by_symbol[sym] = executed * close.pct_change(fill_method=None)
             turn_by_symbol[sym] = cost.turnover(executed)
             net_by_symbol[sym] = gross_by_symbol[sym] - cost.per_bar_cost(executed)
 
@@ -196,6 +199,14 @@ class BacktestEngine:
         per_fold = tuple(annualized_sharpe(net.loc[f.test]) for f in fold_list)
         oos_bars = sum(len(f.test) for f in fold_list)
         equity = np.cumprod(1.0 + net.to_numpy(dtype="float64", na_value=0.0))
+        # The OOS-CONCATENATED net series (union of the disjoint, ordered fold test windows) is the
+        # honest edge metric (ADR §0: walk-forward OOS is the primary evidence). The un-prefixed
+        # headline stats below are FULL-SAMPLE descriptive; oos_* are the train-free edge stats so a
+        # reader / the Inc-5 consumer never reads the blended headline as OOS (red-team skeptic-1).
+        oos_index = fold_list[0].test
+        for fold in fold_list[1:]:
+            oos_index = oos_index.append(fold.test)
+        oos_net = net.loc[oos_index]
 
         return BacktestResult(
             spec_hash=strategy.spec_hash,
@@ -206,6 +217,9 @@ class BacktestEngine:
             annualized_sharpe=annualized_sharpe(net),
             max_drawdown=max_drawdown(net),
             average_turnover=average_turnover(turnover),
+            oos_total_return=total_return(oos_net),
+            oos_annualized_sharpe=annualized_sharpe(oos_net),
+            oos_max_drawdown=max_drawdown(oos_net),
             per_fold_oos_sharpe=per_fold,
             fraction_folds_positive=fraction_positive(per_fold),
             n_trials_at_eval=ledger.n_trials(),

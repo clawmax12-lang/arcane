@@ -89,7 +89,14 @@ def fraction_positive(values: Sequence[float]) -> float:
 
 @dataclass(frozen=True, slots=True)
 class BacktestResult:
-    """A frozen, statistics-ONLY backtest artifact (no accept/kill verdict — the Inc-5 boundary)."""
+    """A frozen, statistics-ONLY backtest artifact (no accept/kill verdict — the Inc-5 boundary).
+
+    The un-prefixed headline stats (``total_return``, ``annualized_return``, ``annualized_sharpe``,
+    ``max_drawdown``) are FULL-SAMPLE descriptive (train + OOS blended). The ``oos_*`` stats and
+    ``per_fold_oos_sharpe`` are the train-free OUT-OF-SAMPLE edge evidence (ADR §0: walk-forward OOS
+    is the primary evidence). A reader / the Inc-5 consumer must read ``oos_*``, never the blended
+    headline, as the edge metric.
+    """
 
     spec_hash: str
     cost_model_id: str
@@ -99,6 +106,10 @@ class BacktestResult:
     annualized_sharpe: float
     max_drawdown: float
     average_turnover: float
+    #: OUT-OF-SAMPLE edge stats over the concatenated fold test windows (the honest edge metric).
+    oos_total_return: float
+    oos_annualized_sharpe: float
+    oos_max_drawdown: float
     per_fold_oos_sharpe: tuple[float, ...]
     fraction_folds_positive: float
     #: live, fail-closed read from the SHARED trial ledger at eval time (the Inc-5 DSR/M18 input).

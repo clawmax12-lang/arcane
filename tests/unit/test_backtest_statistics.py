@@ -108,6 +108,9 @@ def _result() -> BacktestResult:
         annualized_sharpe=0.8,
         max_drawdown=-0.1,
         average_turnover=0.2,
+        oos_total_return=0.02,
+        oos_annualized_sharpe=0.5,
+        oos_max_drawdown=-0.08,
         per_fold_oos_sharpe=(0.5, -0.2, 0.7),
         fraction_folds_positive=2 / 3,
         n_trials_at_eval=17,
@@ -135,6 +138,13 @@ def test_backtest_result_has_no_verdict_field() -> None:
     forbidden = {"passed", "accepted", "killed", "allocated", "verdict", "approve", "is_promising"}
     assert fields.isdisjoint(forbidden)
     assert _result().survivorship_biased is True  # provenance is carried, never stripped
+
+
+def test_backtest_result_carries_explicit_oos_edge_stats() -> None:
+    # ADR §0: the OOS edge metric must be unambiguous (not the train+OOS blended headline).
+    fields = set(BacktestResult.__dataclass_fields__)
+    assert {"oos_total_return", "oos_annualized_sharpe", "oos_max_drawdown"} <= fields
+    assert _result().oos_annualized_sharpe == pytest.approx(0.5)
 
 
 # --- AST name-ban: the Inc-5 boundary cannot be crossed in the backtest package ---

@@ -180,6 +180,64 @@ def test_per_bar_value_matches_hand_computed() -> None:
     assert g.iloc[2] == pytest.approx(-0.10)
 
 
+def test_dropped_execution_shift_is_prefix_stable_but_caught_by_value_and_canary() -> None:
+    # red-team false-green F1: the "RealizedView catches a dropped execution shift" claim is WRONG.
+    # A dropped shift stays prefix-stable (reads no FUTURE data, just re-lags); the off-by-one teeth
+    # are the per-bar value test + the perfect-foresight canary, NOT prefix-stability.
+    idx = pd.DatetimeIndex(pd.bdate_range("2016-01-04", periods=300, tz="UTC"), name="ts")
+    rng = np.random.default_rng(2)
+    close = pd.Series(
+        100.0 * np.exp(np.cumsum(rng.normal(0, 0.015, 300))), index=idx, dtype="float64"
+    )
+    contemp = close.pct_change(fill_method=None)
+    target_w = pd.Series(np.sign(contemp.to_numpy()), index=idx, dtype="float64")
+
+    class _DroppedShift:
+        id = "dropped_shift"
+
+        def compute(self, df: pd.DataFrame) -> pd.Series:
+            c = df["close"].astype("float64")
+            tw = pd.Series(np.sign(c.pct_change(fill_method=None).to_numpy()), index=df.index)
+            return tw.where(tw.notna(), 0.0) * c.pct_change(fill_method=None)  # NO execution shift
+
+    # prefix-stability does NOT flag it (causal, just mis-lagged):
+    assert first_violation(_DroppedShift(), pd.DataFrame({"close": close})) is None
+    # ...but the canary does: the dropped shift earns sign(r[t])*r[t] = |r[t]| (blatant) vs correct
+    # gross_returns earning sign(r[t-1])*r[t] (~flat).
+    correct = float(gross_returns(target_w, close).sum())
+    dropped = float((target_w.where(target_w.notna(), 0.0) * contemp).sum())
+    assert dropped > 5.0 * abs(correct)
+
+
+def test_pct_change_does_not_pad_a_price_hole() -> None:
+    # red-team RT03 regression: a NaN price hole must yield NaN returns around it (no fabricated
+    # cross-hole link). Pins fill_method=None so a future pandas default cannot reintroduce padding.
+    idx = pd.DatetimeIndex(pd.bdate_range("2020-01-01", periods=4, tz="UTC"), name="ts")
+    close = pd.Series([100.0, float("nan"), 110.0, 121.0], index=idx, dtype="float64")
+    target_w = pd.Series([1.0, 1.0, 1.0, 1.0], index=idx, dtype="float64")
+    g = gross_returns(target_w, close)
+    assert np.isnan(g.iloc[1]) and np.isnan(g.iloc[2])  # the hole and the bar after it are NaN
+    assert g.iloc[3] == pytest.approx(0.10)  # 121/110 - 1, the clean bar resumes
+
+
+def test_result_carries_train_free_oos_stats(tmp_path: object) -> None:
+    led = _ledger(tmp_path)
+    reg = default_registry(led)
+    resolved = resolve_spec(default_strategies()[0], reg)
+    result = BacktestEngine().run(
+        resolved,
+        _panel(1300),
+        as_of=_AS_OF,
+        ledger=led,
+        cost=CostModel(),
+        folds=WalkForwardConfig(),
+    )
+    # the OOS edge stats exist and are finite-or-NaN (never inf), distinct from the full headline
+    for v in (result.oos_total_return, result.oos_annualized_sharpe, result.oos_max_drawdown):
+        assert (v != v) or np.isfinite(v)
+    assert result.oos_max_drawdown <= 0.0 or result.oos_max_drawdown != result.oos_max_drawdown
+
+
 # --- GUARD-B + contract checks ---
 
 
