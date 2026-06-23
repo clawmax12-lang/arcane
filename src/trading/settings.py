@@ -30,6 +30,8 @@ OPTIONAL_KEYS: tuple[str, ...] = (
     "FRED_API_KEY",
     "DISCORD_WEBHOOK_URL",
     "GITHUB_TOKEN",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_CHAT_ID",
 )
 
 
@@ -91,3 +93,20 @@ def load_settings(
     optional: dict[str, str | None] = {k: (src.get(k) or None) for k in OPTIONAL_KEYS}
     missing_optional = tuple(k for k in OPTIONAL_KEYS if optional[k] is None)
     return Settings(required=required, optional=optional, missing_optional=missing_optional)
+
+
+def load_notify_settings(
+    env: Mapping[str, str] | None = None, *, dotenv_path: Path | None = None
+) -> tuple[str | None, str | None]:
+    """Return ``(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)`` (each None if absent).
+
+    Reads independently of the trading-credential gate so the notifier can be built even when the
+    broker keys are absent: an injected ``env`` is used verbatim (tests); otherwise the process
+    environment is layered over the project ``.env`` (real env vars win), like ``load_settings``.
+    """
+    if env is not None:
+        src: Mapping[str, str] = env
+    else:
+        path = dotenv_path if dotenv_path is not None else _PROJECT_ROOT / ".env"
+        src = {**read_dotenv(path), **os.environ}
+    return (src.get("TELEGRAM_BOT_TOKEN") or None, src.get("TELEGRAM_CHAT_ID") or None)
