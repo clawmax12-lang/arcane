@@ -118,7 +118,7 @@ def apply_escalation(
     kill_switch: _Halter,
     notifier: _Pager,
     *,
-    broker_flat_fn: Callable[[], None],
+    broker_flat_fn: Callable[[], object],
 ) -> None:
     """Carry out an escalation action. TERMINAL does ALL THREE: flat-all + hard_stop + final
     RED page."""
