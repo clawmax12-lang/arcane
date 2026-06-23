@@ -108,3 +108,22 @@ def test_spa_fails_closed_on_degenerate_inputs() -> None:
     ruin = _noise_matrix(3, seed=11)
     ruin[5, 0] = -2.0
     assert math.isnan(spa_pvalue(ruin, n_bootstrap=200, seed=0))
+
+
+def test_constant_nonzero_column_fails_closed_for_spa_and_pbo() -> None:
+    # red-team TT-1: a CONSTANT-NONZERO column leaves omega ~1e-16 (not bit-zero) and silently
+    # PASSED SPA (0.0) / could pass PBO. A constant column is degenerate => KILL the whole family.
+    const = np.full((80, 3), 0.005)  # every column constant nonzero
+    assert math.isnan(spa_pvalue(const, n_bootstrap=200, seed=0))
+    assert math.isnan(pbo_fraction(const))
+    # one constant sibling poisons a mixed family -> still KILL (no shared-component poisoning)
+    mixed = _noise_matrix(3, seed=12)
+    mixed[:, 1] = 0.005  # one constant-nonzero column
+    assert math.isnan(spa_pvalue(mixed, n_bootstrap=200, seed=0))
+    assert math.isnan(pbo_fraction(mixed))
+
+
+def test_spa_requires_at_least_two_candidates() -> None:
+    # FC-3: SPA over a single candidate is meaningless -> NaN (matches pbo_fraction's S>=2).
+    one = _noise_matrix(1, seed=13)  # shape (_T, 1)
+    assert math.isnan(spa_pvalue(one, n_bootstrap=200, seed=0))

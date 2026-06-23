@@ -49,10 +49,12 @@ class Severity(StrEnum):
 
 
 def _httpx_sender(url: str, body: dict[str, str]) -> None:
-    """Default Sender: POST the payload; re-wrap ALL httpx errors to avoid leaking the token URL."""
+    """Default Sender: POST the payload; re-wrap ALL errors to avoid leaking the token URL."""
     try:
         resp = httpx.post(url, json=body, timeout=_HTTP_TIMEOUT_S)
-    except httpx.HTTPError as exc:  # the exc embeds request.url (with the token) — never surface it
+    except Exception as exc:
+        # Re-wrap ANY error (incl. httpx.InvalidURL, which is NOT an HTTPError). The original exc
+        # embeds request.url (with the token) — surface only the exception TYPE, never the exc/URL.
         raise NotifierError(f"telegram transport failed: {type(exc).__name__}") from None
     if resp.status_code // 100 != 2:
         raise NotifierError(f"telegram returned HTTP {resp.status_code}")
@@ -63,7 +65,8 @@ def _httpx_get_updates(token: str) -> list[dict[str, Any]]:
     url = f"{_API_BASE}/bot{token}/getUpdates"
     try:
         resp = httpx.get(url, timeout=_HTTP_TIMEOUT_S)
-    except httpx.HTTPError as exc:
+    except Exception as exc:
+        # Re-wrap ANY error (incl. httpx.InvalidURL); surface only the type, never the token URL.
         raise NotifierError(f"telegram getUpdates failed: {type(exc).__name__}") from None
     if resp.status_code // 100 != 2:
         raise NotifierError(f"telegram getUpdates returned HTTP {resp.status_code}")

@@ -149,9 +149,15 @@ def _passes_below(name: str, metric: float, threshold: float) -> GateComponent:
 def combine_member_verdict(
     spec_hash: str, components: tuple[GateComponent, ...], n_trials: int
 ) -> GateDecision:
-    """ALL-of: ``allocated`` iff every component passed; reasons name every failure."""
-    allocated = all(c.passed for c in components)
-    reasons = tuple(c.reason for c in components if not c.passed)
+    """ALL-of: ``allocated`` iff there ARE components AND every one passed; reasons name failures.
+
+    ``bool(components) and ...`` guards the vacuous ``all([]) == True`` fail-open (FC-3): an
+    empty component set is never an allocation.
+    """
+    allocated = bool(components) and all(c.passed for c in components)
+    reasons = tuple(c.reason for c in components if not c.passed) or (
+        () if components else ("no gate components evaluated",)
+    )
     return GateDecision(spec_hash, allocated, components, n_trials, reasons)
 
 

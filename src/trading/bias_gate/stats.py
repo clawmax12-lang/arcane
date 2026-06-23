@@ -176,7 +176,13 @@ def _matrix_is_admissible(matrix: Matrix, *, min_strategies: int) -> bool:
         return False
     if not bool(np.isfinite(matrix).all()):
         return False
-    return not bool((matrix <= _RUIN).any())
+    if bool((matrix <= _RUIN).any()):
+        return False
+    # Reject ANY constant column (red-team TT-1): a constant-NONZERO series has a per-obs Sharpe of
+    # NaN, but ``np.std`` leaves ~1e-16 (not bit-zero) so an exact ``omega==0`` guard misses it,
+    # SPA/PBO silently PASS. A constant column is degenerate (no variation) — fail closed for the
+    # whole family. Mirrors the ``min == max`` constant detector in ``_moments``.
+    return not bool((matrix.max(axis=0) == matrix.min(axis=0)).any())
 
 
 def _column_sharpes(block: Matrix) -> Matrix:
@@ -262,11 +268,13 @@ def spa_pvalue(
 
     Tests whether the BEST candidate's OOS mean beats a zero benchmark after the full search. The
     least-favorable (studentized Reality-Check) recentering centers EVERY model at its sample mean —
-    harder to pass than SPA_c, the SAFE direction for a KILL-gate. Fail-closed on S<1, T<60, a
-    constant column (ω==0), ruin, or a non-finite matrix. Accept (family) iff p < 0.05.
+    harder to pass than SPA_c, the SAFE direction for a KILL-gate. Fail-closed on S<2, T<60, any
+    constant column, ruin, or a non-finite matrix. Accept (family) iff p < 0.05.
     """
     matrix = np.asarray(perf_matrix, dtype="float64")
-    if not _matrix_is_admissible(matrix, min_strategies=1):
+    # SPA over a single candidate is meaningless (no "best of N" to test) — require >= 2 (FC-3),
+    # matching pbo_fraction; a lone S=1 family is already short-circuited by evaluate_family.
+    if not _matrix_is_admissible(matrix, min_strategies=2):
         return float("nan")
     n_obs = matrix.shape[0]
     rng = np.random.default_rng(seed)

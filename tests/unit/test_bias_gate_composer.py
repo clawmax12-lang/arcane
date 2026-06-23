@@ -131,8 +131,10 @@ def test_combine_kills_on_any_failing_component() -> None:
     assert "nope" in decision.reasons
 
 
-def test_judge_member_passes_on_synthetic_strong_edge() -> None:
-    # the per-member judge (T1/T2/DSR/PSR/WF/enough_samples/cost_stress) all pass on a strong edge.
+def test_judge_member_passes_stats_on_strong_edge_t2_holds_the_line() -> None:
+    # The 6 statistical judges (T1/DSR/PSR/WF/enough_samples/cost_stress) all PASS on a strong edge;
+    # T2 unconditionally fails while no PIT verifier is wired (FC-1). So the gate's stats teeth can
+    # say YES, but survivorship correctly holds the line — the only failure is T2.
     ev = _strong_evidence()
     result = _result(biased=False, unverified=False, sharpe=1.5, frac=1.0)
     comps = judge_member(
@@ -143,7 +145,14 @@ def test_judge_member_passes_on_synthetic_strong_edge() -> None:
         stressed_evidences=(_strong_evidence(1), _strong_evidence(2)),
     )
     failed = [c.name for c in comps if not c.passed]
-    assert failed == [], f"unexpected failures: {failed}"
+    assert failed == ["T2_survivorship"], f"unexpected failures: {failed}"
+
+
+def test_combine_does_not_vacuously_allocate_on_empty_components() -> None:
+    # red-team FC-3: ``all([]) == True`` must NOT become an allocation.
+    decision = combine_member_verdict("h", (), n_trials=5)
+    assert decision.allocated is False
+    assert decision.reasons
 
 
 def test_frozen_component_names_are_the_expected_nine() -> None:

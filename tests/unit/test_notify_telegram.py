@@ -156,6 +156,29 @@ def test_notifier_errors_are_arcane_errors() -> None:
     assert issubclass(NotifierMisconfiguredError, NotifierError)
 
 
+def test_default_sender_rewraps_non_httperror_token_free() -> None:
+    # red-team NOTIFY-1: httpx.InvalidURL is NOT an HTTPError subclass; a control-char in the token
+    # must be re-wrapped to a token-free NotifierError (not an uncaught InvalidURL), so the
+    # best-effort YELLOW/ORANGE contract holds and no token text leaks.
+    from trading.notify.telegram import _httpx_sender
+
+    bad_url = "https://api.telegram.org/bot8123456789:AAsecretsecretsecret\r/sendMessage"
+    with pytest.raises(NotifierError) as exc:
+        _httpx_sender(bad_url, {"chat_id": "1", "text": "x"})
+    msg = str(exc.value)
+    assert "AAsecretsecretsecret" not in msg and "8123456789" not in msg
+
+
+def test_non_red_page_swallows_a_default_sender_invalid_url() -> None:
+    # the contract end-to-end: a CRLF-tainted token makes the DEFAULT sender raise InvalidURL; after
+    # the re-wrap, YELLOW/ORANGE swallow it (best-effort) and only RED re-raises (token-free).
+    notifier = TelegramNotifier("8123456789:AAsecretsecretsecret\r", "1")  # real _httpx_sender
+    notifier.page_operator(Severity.YELLOW, "minor")  # must NOT raise
+    with pytest.raises(NotifierError) as exc:
+        notifier.page_operator(Severity.RED, "EMERGENCY")
+    assert "AAsecretsecretsecret" not in str(exc.value)
+
+
 # --- settings ---
 
 

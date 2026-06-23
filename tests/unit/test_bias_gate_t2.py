@@ -48,13 +48,29 @@ def test_t2_returns_a_gate_component() -> None:
     assert comp.name == "T2_survivorship"
 
 
-def test_t2_passes_only_when_both_flags_false() -> None:
-    assert t2_survivorship(_result(biased=False, unverified=False)).passed is True
+def test_t2_fails_closed_even_when_flags_claim_verified(monkeypatch: pytest.MonkeyPatch) -> None:
+    # red-team FC-1: a forged ``survivorship_unverified=False`` must NOT grant a pass while no PIT
+    # verifier is wired — T2 fails closed UNCONDITIONALLY (the flags are self-attested/forgeable).
+    comp = t2_survivorship(_result(biased=False, unverified=False))
+    assert comp.passed is False
+    assert "survivorship" in comp.reason
+
+
+def test_t2_passes_only_with_a_wired_pit_verifier_and_clean_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # the future-wired path: ONLY when a real PIT verifier exists AND both flags are False.
+    import trading.bias_gate.tests_t2 as t2
+
+    monkeypatch.setattr(t2, "_PIT_VERIFIER_WIRED", True)
+    assert t2.t2_survivorship(_result(biased=False, unverified=False)).passed is True
+    assert t2.t2_survivorship(_result(biased=False, unverified=True)).passed is False
+    assert t2.t2_survivorship(_result(biased=True, unverified=False)).passed is False
 
 
 @pytest.mark.parametrize(
     ("biased", "unverified"),
-    [(True, True), (True, False), (False, True)],
+    [(True, True), (True, False), (False, True), (False, False)],
 )
 def test_t2_fails_closed_while_degraded(biased: bool, unverified: bool) -> None:
     comp = t2_survivorship(_result(biased=biased, unverified=unverified))
