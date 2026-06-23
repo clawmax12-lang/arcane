@@ -43,6 +43,24 @@ def test_config_is_frozen_and_validated() -> None:
         WalkForwardConfig().train_months = 6  # type: ignore[misc]
 
 
+def test_overlapping_test_windows_rejected() -> None:
+    # step < test overlaps consecutive OOS test windows -> the engine double-counts sessions and
+    # inflates the OOS edge magnitude (red-team WF-1). Must fail closed at construction.
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        WalkForwardConfig(test_months=6, step_months=3)
+    with pytest.raises(ValidationError):
+        WalkForwardConfig(test_months=12, step_months=1)
+
+
+def test_disjoint_geometry_allowed() -> None:
+    # step == test (full coverage, the 12/3/3 default) and step > test (honest sub-sampling)
+    # are both legitimate — only overlap is rejected.
+    assert WalkForwardConfig(test_months=3, step_months=3).step_months == 3
+    assert WalkForwardConfig(test_months=3, step_months=6).step_months == 6
+
+
 # --- malformed input fails closed ---
 
 

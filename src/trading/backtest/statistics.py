@@ -5,6 +5,11 @@ total/annualized return, max drawdown, average turnover, per-fold OOS positivity
 masks non-finite inputs and returns NaN (never 0 or inf) on a degenerate window (empty, flat, or a
 total wipeout), so a noisy fold can never masquerade as a real number.
 
+RUIN handling (red-team NUM-1/NUM-2): a per-bar return ``<= -1.0`` zeroes the account; past it the
+compounding math is fictional (a wiped fold would otherwise show +Sharpe / 0 drawdown — fabricated
+edge). So a ruin fold reports NaN Sharpe / NaN CAGR (never a win) and ``-1.0`` total-return /
+max-drawdown (an honest total loss), never a sign-flipped 0.0 or an even-count-of-(<-1) positive.
+
 ``BacktestResult`` is a FROZEN container of RAW statistics with NO ``passed`` / ``accepted`` /
 ``allocated`` / ``verdict`` field: Inc-4 NEVER applies an ADR §8 threshold or an accept/kill call
 (that is the Increment-5 bias gate). A committed AST name-ban test forbids any bias-gate symbol
@@ -31,11 +36,26 @@ def _finite(series: pd.Series) -> npt.NDArray[np.float64]:
     return arr[np.isfinite(arr)]
 
 
+#: A per-bar realized return <= -1.0 is RUIN: the account hits <= 0 in a single bar (only reachable
+#: on a short into a >100% up-move). Beyond it ``cumprod(1 + r)`` crosses zero and every compounding
+#: statistic turns fictional — a WIPED fold can otherwise report +Sharpe / 0 drawdown (fabricated
+#: edge, the cardinal ADR §0 sin; red-team NUM-1/NUM-2). So every reduction treats a ruin fold as
+#: catastrophic-and-degenerate: NEVER a finite "win", never a sign-flipped zero drawdown.
+_RUIN: Final[float] = -1.0
+
+
+def _has_ruin(values: npt.NDArray[np.float64]) -> bool:
+    """True if any finite return is <= -1.0 (an account-zeroing bar)."""
+    return bool((values <= _RUIN).any())
+
+
 def annualized_sharpe(returns: pd.Series, periods_per_year: int = TRADING_DAYS_PER_YEAR) -> float:
     """Annualized Sharpe (ddof=1, zero rf); NaN on < 2 points or a zero-variance window."""
     r = _finite(returns)
     if r.size < 2:
         return float("nan")
+    if _has_ruin(r):
+        return float("nan")  # a ruined fold is not a winner — never let it score a positive Sharpe
     sd = float(r.std(ddof=1))
     if not np.isfinite(sd) or sd == 0.0:
         return float("nan")
@@ -47,6 +67,8 @@ def total_return(returns: pd.Series) -> float:
     r = _finite(returns)
     if r.size == 0:
         return float("nan")
+    if _has_ruin(r):
+        return _RUIN  # total loss; floor at -100% (an even <-1 count would else read >0)
     return float(np.prod(1.0 + r) - 1.0)
 
 
@@ -55,6 +77,8 @@ def annualized_return(returns: pd.Series, periods_per_year: int = TRADING_DAYS_P
     r = _finite(returns)
     if r.size == 0:
         return float("nan")
+    if _has_ruin(r):
+        return float("nan")  # CAGR undefined post-ruin (an even <-1 count would else read >0)
     growth = float(np.prod(1.0 + r))
     if growth <= 0.0:  # a total wipeout: CAGR is undefined (no real fractional power of <= 0)
         return float("nan")
@@ -66,6 +90,8 @@ def max_drawdown(returns: pd.Series) -> float:
     r = _finite(returns)
     if r.size == 0:
         return float("nan")
+    if _has_ruin(r):
+        return _RUIN  # total loss: cap at -100% (else equity<0 sign-flips to a false 0.0)
     equity = np.cumprod(1.0 + r)
     running_max = np.maximum.accumulate(equity)
     return float((equity / running_max - 1.0).min())

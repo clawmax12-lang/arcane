@@ -20,7 +20,7 @@ import math
 from dataclasses import dataclass
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from trading.backtest.errors import WalkForwardError
 
@@ -37,6 +37,22 @@ class WalkForwardConfig(BaseModel):
     purge_bars: int = Field(default=1, ge=0)
     #: de-Prado embargo as a fraction of the test span (bars), applied on top of the purge.
     embargo_frac: float = Field(default=0.01, ge=0.0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _no_overlapping_test_windows(self) -> WalkForwardConfig:
+        """Reject ``step_months < test_months`` — it OVERLAPS consecutive OOS test windows.
+
+        The engine concatenates each ``fold.test`` into the OOS index, so an overlapped session is
+        DOUBLE-COUNTED and the OOS edge magnitude is silently inflated (red-team WF-1). Requiring
+        ``step >= test`` keeps the OOS test windows disjoint; ``step == test`` (the 12/3/3 default)
+        is full, gap-free coverage. (``step > test`` deliberately sub-samples — honest.)
+        """
+        if self.step_months < self.test_months:
+            raise ValueError(
+                f"step_months ({self.step_months}) < test_months ({self.test_months}) overlaps "
+                "OOS test windows (double-counts sessions); require step_months >= test_months"
+            )
+        return self
 
 
 @dataclass(frozen=True, slots=True, eq=False)

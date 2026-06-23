@@ -95,6 +95,43 @@ def test_statistics_ignore_nan_bars() -> None:
     )
 
 
+# --- RUIN (return <= -1.0): a wiped fold must never read as a win (red-team NUM-1/NUM-2) ---
+
+
+def test_sharpe_nan_on_ruin_fold() -> None:
+    # a -100% bar zeroes the account; the mean/std Sharpe is compounding-blind and would otherwise
+    # score this wiped fold a strong POSITIVE (+6.2). It MUST be NaN, never positive.
+    assert math.isnan(annualized_sharpe(_r([-1.0, 0.6, 0.6, 0.6, 0.6])))
+    assert math.isnan(annualized_sharpe(_r([-1.5, 0.6, 0.6, 0.6, 0.6])))  # short into >100% up-move
+
+
+def test_max_drawdown_reports_total_loss_on_ruin_not_zero() -> None:
+    # once equity goes negative the equity/running_max ratio sign-flips and .min() returns 0.0 —
+    # a false ZERO drawdown on a blowout. Ruin must report a -100% drawdown.
+    assert max_drawdown(_r([-2.0, 0.5, 0.5])) == pytest.approx(-1.0)
+    assert max_drawdown(_r([-1.5, 0.5, 0.5])) == pytest.approx(-1.0)
+    assert max_drawdown(_r([-1.0, 0.5])) == pytest.approx(-1.0)  # exact boundary, was NaN+warning
+
+
+def test_total_return_floored_at_total_loss_on_ruin() -> None:
+    # an EVEN count of <-1 bars makes prod(1+r) positive -> a wiped account reads as break-even/up.
+    assert total_return(_r([-2.0, -2.0])) == pytest.approx(-1.0)  # was 0.0 (prod = (-1)(-1) = 1)
+    assert total_return(_r([-1.0, 0.5])) == pytest.approx(-1.0)
+
+
+def test_annualized_return_nan_on_ruin_including_even_count() -> None:
+    assert math.isnan(annualized_return(_r([-1.0, 0.5])))  # boundary (existing contract)
+    assert math.isnan(annualized_return(_r([-2.0, -2.0])))  # even count would else give a +CAGR
+
+
+def test_ruin_fold_is_not_counted_positive() -> None:
+    # per_fold_oos_sharpe feeds fraction_folds_positive; a ruined fold's NaN must drop out, never
+    # inflate the positive fraction.
+    ruin = annualized_sharpe(_r([-1.0, 0.6, 0.6, 0.6, 0.6]))
+    assert fraction_positive([ruin, 0.5]) == pytest.approx(1.0)  # only the genuine 0.5 counts
+    assert fraction_positive([ruin, -0.3]) == pytest.approx(0.0)
+
+
 # --- BacktestResult: frozen, statistics-only ---
 
 
