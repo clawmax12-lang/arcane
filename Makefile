@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := check
 PY := uv run
 
-.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 inc4 leak-lint clean clean-cache
+.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 inc4 inc5 leak-lint clean clean-cache
 
 setup:
 	uv sync
@@ -77,3 +77,15 @@ inc4:
 	$(PY) mypy
 	$(PY) pytest --cov=trading --cov-report=term-missing --cov-fail-under=85 -q
 	@echo "Increment 4 gate: PASS"
+
+# Increment 5 gate: the ALL-of bias/kill gate + Telegram notifier must clear ALL of these. leak-lint
+# now also scans the bias_gate + notify packages; the ADR-§8 ALL-of composer (DSR/PSR/PBO/SPA + WF),
+# the T1 consistency guard, the high-water-mark, and the seal-boundary teeth run inside the pytest
+# suite. The Inc-4 backtest AST name-ban still scans ONLY backtest (a teeth test pins that).
+inc5:
+	$(PY) ruff check src tests
+	$(PY) black --check src tests
+	$(PY) python -m trading.data.leak_lint src/trading/data src/trading/factors src/trading/backtest src/trading/bias_gate src/trading/notify
+	$(PY) mypy
+	$(PY) pytest --cov=trading --cov-report=term-missing --cov-fail-under=85 -q
+	@echo "Increment 5 gate: PASS"

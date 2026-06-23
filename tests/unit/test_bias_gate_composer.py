@@ -150,13 +150,13 @@ def test_frozen_component_names_are_the_expected_nine() -> None:
     assert FROZEN_COMPONENT_NAMES == (
         "T1_consistency",
         "T2_survivorship",
-        "DSR",
-        "PSR",
+        "DSR_deflated_sharpe",
+        "PSR_prob_sharpe",
         "WF_OOS",
         "enough_samples",
         "cost_stress",
-        "PBO",
-        "SPA",
+        "PBO_overfit",
+        "SPA_superiority",
     )
 
 

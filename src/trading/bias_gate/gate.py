@@ -71,13 +71,13 @@ __all__ = [
 FROZEN_COMPONENT_NAMES: Final[tuple[str, ...]] = (
     "T1_consistency",
     "T2_survivorship",
-    "DSR",
-    "PSR",
+    "DSR_deflated_sharpe",
+    "PSR_prob_sharpe",
     "WF_OOS",
     "enough_samples",
     "cost_stress",
-    "PBO",
-    "SPA",
+    "PBO_overfit",
+    "SPA_superiority",
 )
 
 
@@ -178,8 +178,8 @@ def judge_member(
     return (
         GateComponent("T1_consistency", True, "recompute matched the sealed result"),
         t2_survivorship(result),
-        _passes_above("DSR", dsr, DSR_THRESHOLD),
-        _passes_above("PSR", psr, PSR_THRESHOLD),
+        _passes_above("DSR_deflated_sharpe", dsr, DSR_THRESHOLD),
+        _passes_above("PSR_prob_sharpe", psr, PSR_THRESHOLD),
         GateComponent("WF_OOS", wf_oos_ok(result), "walk-forward OOS criterion"),
         GateComponent(
             "enough_samples", bool(result.enough_samples), "OOS sample-size floor (ADR §8)"
@@ -275,8 +275,8 @@ def evaluate_family(
     matrix = _align_family_matrix([built[i][0] for i in built_order])
     pbo = pbo_fraction(matrix) if matrix is not None else float("nan")
     spa = spa_pvalue(matrix) if matrix is not None else float("nan")
-    pbo_comp = _passes_below("PBO", pbo, PBO_THRESHOLD)
-    spa_comp = _passes_below("SPA", spa, SPA_ALPHA)
+    pbo_comp = _passes_below("PBO_overfit", pbo, PBO_THRESHOLD)
+    spa_comp = _passes_below("SPA_superiority", spa, SPA_ALPHA)
     family_sharpes = tuple(per_obs_sharpe(built[i][0].oos_returns) for i in built_order)
 
     # Phase 3 — per-member ALL-of verdict (the family PBO/SPA components are shared).
