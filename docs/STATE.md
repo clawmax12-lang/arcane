@@ -4,14 +4,53 @@
 > `docs/adr/ADR-001-foundation.md`, then run `make inc1`.** This is the canonical,
 > version-controlled state so the process is never lost to a context compaction.
 
-**As of:** 2026-06-23 · **Branch:** `build/increment-4-backtest` — pushed; `main` fast-forwarded to it.
-**Head:** `b5739e5` (last code commit; this STATE+backlog+memory seal sits on top) · `make inc1` AND
-`inc2` AND `inc3` AND `inc4` → PASS (97.67% cov, `mypy --strict`, leak-lint clean over data + factors +
-backtest). **✅ INC 2 SEALED** (`22cc76f`). **✅ INC 3 SEALED** (`2512d3f`). **✅ INCREMENT 4 SEALED +
-RE-AUDITED** — strategies + walk-forward backtest done, design-panel-driven, red-team-hardened across TWO
-independent rounds; round 2 found + fixed 3 reachable fail-opens (ruin-aware stats + WF overlap reject,
-`b5739e5`). **NEXT (a future run, NOT started): Increment 5 — the bias/kill gate (DSR/PSR/PBO/Reality-Check,
-ALL-of accept-or-kill) + the FIRST paper submit.**
+**As of:** 2026-06-23 · **Branch:** `build/increment-5-bias-gate` — pushed; `main` fast-forwarded to it.
+**Head:** `6f0f591` (Inc-5 build C10; red-team + seal sit on top) · `make inc1` AND `inc2` AND `inc3`
+AND `inc4` AND `inc5` → PASS (95.83% cov, `mypy --strict`, leak-lint clean over data + factors +
+backtest + bias_gate + notify). **✅ INC 2/3/4 SEALED.** **🔨 INCREMENT 5 — BUILD COMPLETE, RED-TEAM
+NEXT:** the ALL-of bias/kill gate (DSR/PSR/PBO/SPA + WF-OOS, accept-or-KILL) + the 4 carried tripwires
++ a Telegram notifier (live-verified). The FIRST paper submit is **DEFERRED** to a future run
+(operator-approved 2026-06-23 — executor still NO-OP, Murphy guards G1–G10 unwired). Resume pointer:
+red-team the gate's teeth, remediate, SEAL.
+
+## 🔨 Increment 5 — ALL-of bias/kill gate + Telegram notifier (BUILD COMPLETE; red-team pending)
+
+Design panel `wf_e2d07d5c-8e3` (4 lenses + skeptic + synth) → `docs/INCREMENT-5-DESIGN.md`; **operator
+checkpoint signed all conservative**: threshold table verbatim (DSR>0.95, PSR>0.95, PBO<0.5, SPA p<0.05,
+WF OOS-Sharpe>0 & ≥60% folds, cost-stress 2×/3×, enough_samples≥60); DSR = strict single-statistic;
+family min 2 (a lone candidate is structurally un-allocatable); BUILD gate+notifier, DEFER the submit.
+No ADR change, no Inc-4 reopen, no new dep (pure-numpy erf/Acklam; scipy absent). New pkgs
+`src/trading/bias_gate/` + `src/trading/notify/`. 10 TDD clusters, all green + committed:
+- C1 `a54e501` — errors + pure-numpy normals (erf CDF + Acklam PPF, fail-closed) + frozen thresholds.
+- C2 `f1f695e` — tripwire A1: `eval_trial_params` folds cost numerics + WF geometry into the trial
+  identity (M18 under-count fix); reflective-completeness tests.
+- C3 `1b28ea7` — tripwire A2: `NTrialsHighWaterMark` (atomic kill-switch idiom; RAISES on a count
+  regression — DB-deletion-proof).
+- C4 `8613b1d` — tripwire A3 (`required_purge_bars` = `strategy_warmup + label_horizon`, re-derived) +
+  A4 (`t2_survivorship` passes only on dual-False) + `verdict.py` GateComponent/GateDecision.
+- C5 `383c7e6` — evidence assembler: recompute OOS net series via Inc-4 PUBLIC primitives + the STRICT
+  T1 consistency guard (per-fold 1e-9 AND concat AND hashes; both-NaN agree, NaN-vs-finite KILLs).
+- C6 `bab8b04` — PSR + DSR + cross-trial V (per-obs SR, population skew/kurt; deflation via
+  expected-max-of-N; fail-closed NaN on every degenerate tail).
+- C7 `3e7a949` — PBO (CSCV) + conservative SPA (Hansen stationary bootstrap, least-favorable
+  recentering = harder-to-pass = safe for a KILL-gate).
+- C8 `7728d96` — WF criterion + the ALL-of composer `evaluate_family` (records every eval's identity
+  BEFORE reading N via HWM; PBO/SPA shared family components; ALL-of accept-or-KILL). **The 4 toys are
+  KILLED end-to-end** (T2 + stats). Decomposed must-PASS proves the gate CAN allocate.
+- C9 `145bf6f` — Telegram notifier (sanitize-before-send, RED page RE-RAISES, token never logged, grep
+  test). **LIVE ping to operator's phone verified 2xx.**
+- C10 `6f0f591` — `make inc5` + seal-boundary teeth (backtest stays verdict-free; bias_gate uses the
+  vocabulary) + handoff invariant (NO submit call site in bias_gate) + leak-lint over the new packages.
+
+**THE GATE'S VERDICT ON THE 4 TOYS: all KILLED** (ADR §0 success — no edge survives on a
+survivorship-unverified universe; T2 alone forces it, the statistics gate is the independent 2nd wall).
+
+**NEXT: red-team the gate's TEETH** (a known-overfit/ruined/NaN-OOS/single-lucky-fold strategy MUST be
+KILLED; n_trials can't be under-counted; HWM can't be reset; the executor can never submit a killed
+strategy or exceed a cap; the notifier can't leak a secret), remediate fix-now, then SEAL.
+
+---
+
 
 ## ✅ Increment 4 — strategies + walk-forward backtest (SEALED)
 
