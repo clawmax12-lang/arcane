@@ -41,6 +41,12 @@ COST_STRESS_SCALES: Final[tuple[float, ...]] = (2.0, 3.0)
 # --- family assembly (operator-signed: a lone candidate is structurally un-allocatable) ---
 #: PBO/SPA are undefined for a single candidate; require a family of at least this many.
 MIN_FAMILY_SIZE: Final[int] = 2
+#: Upper bound on a candidate family (Inc-7 skeptic A3). The trial ledger's high-water-mark NEVER
+#: decreases, so an oversized/duplicated family would PERMANENTLY inflate ``n_trials`` (irreversible
+#: gate self-DoS). ADR §5 caps strategies at "3-5, not 20"; this generous-but-bounded ceiling makes
+#: the inflation unrepresentable. A family over this size, or with duplicate ``spec_hash``es, is
+#: rejected fail-closed with ZERO ledger writes and ZERO grants.
+MAX_FAMILY_SIZE: Final[int] = 16
 
 # --- deterministic bootstrap / CSCV parameters ---
 #: Hansen SPA stationary-bootstrap resample count.

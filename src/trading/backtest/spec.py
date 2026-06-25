@@ -29,6 +29,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from trading.regime.labels import RegimeLabel
+
 _NAME_RE = re.compile(r"^[a-z0-9_]{1,64}$")
 _FACTOR_ID_RE = re.compile(r"^[a-z0-9_]{1,64}$")
 
@@ -99,6 +101,12 @@ class StrategySpec(BaseModel):
     #: The cost-model version this spec is bound to (folded into ``spec_hash`` so a cost change is a
     #: new trial). ``run`` asserts the supplied ``CostModel.cost_model_id`` matches (fail-closed).
     cost_model_id: str = Field(default="conservative_v1", min_length=1)
+    #: STRUCTURED regime affinity (Inc-7): the regime labels in which the allocator may CONSIDER
+    #: this strategy. Default ``()`` = no affinity = eligible in EVERY regime (existing specs are
+    #: unchanged). Advisory/subtractive ONLY — it never gates, sizes, or overrides (the gate ignores
+    #: it; only the allocator's ``RegimePosture`` reads it). Folded into ``spec_hash`` ONLY when
+    #: non-empty, so a default spec's hash is unchanged but an affinity edit forces a re-gate.
+    eligible_regimes: tuple[RegimeLabel, ...] = ()
 
     @field_validator("name", mode="after")
     @classmethod
@@ -125,7 +133,7 @@ class StrategySpec(BaseModel):
         canonical ``json.dumps(sort_keys, separators)`` of this dict is byte-identical regardless of
         who serializes it, which is what makes ``spec_hash`` and the ledger ``combo_hash`` agree.
         """
-        return {
+        params: dict[str, Any] = {
             "name": self.name,
             "rule": self.rule.value,
             "position_mode": self.position_mode.value,
@@ -141,6 +149,12 @@ class StrategySpec(BaseModel):
                 for leg in sorted(self.legs, key=lambda lg: lg.factor_id)
             ],
         }
+        # Folded in ONLY when an affinity is DECLARED (sorted for set-semantics), so a default-empty
+        # spec's canonical bytes — and thus its ``spec_hash`` — are byte-identical to the pre-Inc-7
+        # version (the toys are unchanged), while any affinity edit yields a new hash + a re-gate.
+        if self.eligible_regimes:
+            params["eligible_regimes"] = sorted({r.value for r in self.eligible_regimes})
+        return params
 
     @property
     def spec_hash(self) -> str:

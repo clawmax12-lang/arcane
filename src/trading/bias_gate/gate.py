@@ -41,6 +41,7 @@ from trading.bias_gate.tests_t2 import t2_survivorship
 from trading.bias_gate.thresholds import (
     COST_STRESS_SCALES,
     DSR_THRESHOLD,
+    MAX_FAMILY_SIZE,
     MIN_FAMILY_SIZE,
     MIN_FOLDS,
     PBO_THRESHOLD,
@@ -302,6 +303,18 @@ def evaluate_family(
         return tuple(
             GateDecision(m.result.spec_hash, False, (comp,), 0, (reason,)) for m in members
         )
+
+    # skeptic A3: an oversized OR duplicate-spec family would permanently inflate the monotonic
+    # n_trials high-water-mark (an irreversible gate self-DoS). Reject it BEFORE any ledger write —
+    # fail-closed all-killed with ZERO ledger writes and ZERO grants (the bound is law, untunable).
+    spec_hashes = [m.result.spec_hash for m in members]
+    if len(members) > MAX_FAMILY_SIZE or len(set(spec_hashes)) != len(spec_hashes):
+        reason = (
+            f"family size {len(members)} > MAX {MAX_FAMILY_SIZE} or has duplicate spec_hashes "
+            "(fail closed — no ledger write, no grant)"
+        )
+        comp = GateComponent("family_size", False, reason)
+        return tuple(GateDecision(h, False, (comp,), 0, (reason,)) for h in spec_hashes)
 
     # Phase 0 — record every gate evaluation's identity BEFORE N is read (M18 over-count is safe).
     for m in members:
