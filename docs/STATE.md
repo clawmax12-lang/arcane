@@ -5,16 +5,20 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-25 · **Branch:** `build/increment-7-regime-allocator-driver` — pushed; `main` ff'd.
-**Head:** `10a668d` (Inc-7 BUILD COMPLETE, C1–C7) · **`make inc1..inc7` → ALL SEVEN PASS** (95.37% cov,
-`mypy --strict`, leak-lint clean over data+factors+backtest+bias_gate+notify+guards+executor+regime+
-allocator+driver+scheduler). **🚧 INCREMENT 7 — BUILD COMPLETE; RED-TEAM NEXT.** The regime classifier
-+ allocator + driver (the FIRST real driver) is built; all 7 design-panel skeptic must-fix folded in.
-Design of record: `docs/INCREMENT-7-DESIGN.md` (panel `wf_66ff5e4b-832`). Operator checkpoint signed all
-defaults: build-as-specified, 6-label vol×trend regime, GRD-4 single-file close + documented `rm -rf`
-defer. **ZERO orders submitted** — the 4 toys are gate-KILLED end-to-end (record-only). NEXT: the
-adversarial red-team (Part D), then remediate + seal. Do NOT seal until the red-team is done.
+**Head:** `<seal>` (Inc-7 SEALED) · **`make inc1..inc7` → ALL SEVEN PASS** (95.37% cov, `mypy --strict`,
+leak-lint clean over the full submit-path closure incl. regime+allocator+driver+scheduler). **✅
+INCREMENT 7 SEALED + RED-TEAMED.** The regime classifier + allocator + the FIRST real driver (the first
+machine that wires `FamilyMember` → gate → allocator → the record-only executor loop), design-panel-
+driven (`wf_66ff5e4b-832`, CONDITIONAL + 7 skeptic must-fix folded in), red-team-hardened
+(`wf_066957e9-703`: 5 of 6 lenses throttled → **lead finished SINGLE-THREADED** with own repros; verdict
+**ADR §0 HOLDS, no reachable hole, ZERO orders**). All 5 carried Inc-6 tripwires CLOSED; the regime is
+DERIVED/advisory/subtractive (can NEVER gate/size/override); the driver is RECORD-ONLY; the scheduler is
+DORMANT. **ZERO paper orders submitted** — the 4 toys are gate-KILLED end-to-end (ADR §0). The first
+real order remains DEFERRED to a per-order operator GO. Red-team triage + HARD tripwires:
+`docs/INC7-HARDENING-BACKLOG.md`. **NEXT (a future run, NOT started): the slow-loop AGENTS increment**
+(news/macro/sentiment synthesis feeding the regime — agent-fed regime was DEFERRED here). Do NOT start it.
 
-## 🚧 Increment 7 — regime + allocator + driver (BUILD COMPLETE; red-team pending)
+## ✅ Increment 7 — regime + allocator + driver (SEALED + RED-TEAMED)
 
 **PART A — acting-surface hardening: ✅ COMPLETE (C1–C3).** All five carried Inc-6 tripwires + the 7
 skeptic must-fix closed, each TDD + gated + committed + pushed + ff-main:
@@ -59,11 +63,23 @@ skeptic must-fix closed, each TDD + gated + committed + pushed + ff-main:
   operator marker) + a live driver smoke (real Polygon → toys still all KILLED → zero).
 - **C8** — `make inc7` (mirrors inc6 + leak-lint over the 4 new packages). **`make inc1..inc7` ALL PASS.**
 
-**NEXT: PART D — the adversarial RED-TEAM (wave-based Workflow), then remediate + seal.** Attack the
-now-live driver: can it mint a grant for a non-survivor / forge the universe end-to-end (re-test FC-1
-through the real driver) / exceed a cap / submit without GO / let the regime gate or size / get an LLM
-into the hot loop / bypass an armed guard or §8 auto-flat? The acting surface is RECORD-ONLY; no order
-has been submitted. Do NOT seal until the red-team + remediation is complete.
+**PART D — adversarial RED-TEAM: ✅ DONE (`wf_066957e9-703`).** 6 finder lenses; 5 throttled by a
+server-side rate limit → the lead finished SINGLE-THREADED with own `uv run python` repros (per
+`insight-autonomous-quality-discipline`: a throttled "0 confirmed" is NOT a pass). **Verdict: ADR §0
+HOLDS — no reachable hole; ZERO orders is the actual outcome through the real `drive_once` /
+`run_scheduled_pass`.** All 6 surfaces SOUND (FC-1 holds through the driver; 40k-case caps sweep zero
+violations; GO single-use; tombstone durable; §8 auto-flats; family bound holds via the driver with zero
+ledger writes; regime type-disjoint+subtractive). **One defense-in-depth HARDEN-NOW closed:** the PHI1
+AST scan now also bans the dynamic-import/exec/shell surface (`importlib`/`__import__`/`exec`/
+`subprocess`/`os.system`) so a future dynamic LLM load cannot slip the static scan. Accepted boundaries
+(D3-class `GateDecision`, unreachable via driver) + carried HARD tripwires (universe-completeness; the
+per-order GO; the `rm -rf state/` GRD-4 residual) in `docs/INC7-HARDENING-BACKLOG.md`.
+
+**NEXT (a FUTURE run — NOT started): the slow-loop AGENTS increment.** The agent-fed regime synthesis
+(news/macro/sentiment, §1 of CLAUDE.md) was DEFERRED here. Any LLM-advisory regime lives in a SLOW-LOOP
+package OUTSIDE the submit-path AST roots, consumed via a sanitized `regime.json` — never imported into
+the acting path. The acting surface is RECORD-ONLY; no order has been submitted. Increment 7 is sealed;
+do not reopen without cause.
 
 ---
 

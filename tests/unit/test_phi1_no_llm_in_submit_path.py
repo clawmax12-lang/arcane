@@ -38,6 +38,13 @@ _ROOTS = tuple(_SRC / name for name in _ROOT_NAMES)
 _BANNED_TOP = {"anthropic", "openai", "langchain", "llm", "agents"}
 _BANNED_SUBSTR = ("anthropic", "openai", "llm", "agent")
 
+# Inc-7 red-team (defense-in-depth): the static-import scan above cannot see a DYNAMIC import. Ban
+# the dynamic-import / exec / shell surface in the submit-path closure so a future LLM can never
+# be loaded at runtime past the AST scan (e.g. ``importlib.import_module(...)``, ``__import__``,
+# ``exec``/``eval``, ``subprocess``/``os.system``). No closure module uses any of these today.
+_BANNED_DYNAMIC_MODULES = {"importlib", "runpy", "subprocess"}
+_BANNED_DYNAMIC_CALLS = {"__import__", "exec", "eval"}
+
 
 def _module_names(tree: ast.AST) -> list[str]:
     names: list[str] = []
@@ -92,3 +99,50 @@ def test_phi1_scan_is_recursive_and_catches_nested_llm_import(tmp_path: Path) ->
 def test_executor_submit_modules_present() -> None:
     executor_files = {p.name for p in (_SRC / "executor").glob("*.py")}
     assert {"submit.py", "sizing.py", "grant.py", "loop.py", "broker_paper.py"} <= executor_files
+
+
+def _dynamic_offenders_in(root: Path) -> list[str]:
+    """Dynamic-import / exec / shell surface anywhere under ``root`` (recursive)."""
+    offenders: list[str] = []
+    for py in root.rglob("*.py"):
+        tree = ast.parse(py.read_text(encoding="utf-8"))
+        for mod in _module_names(tree):
+            if mod.split(".")[0] in _BANNED_DYNAMIC_MODULES:
+                offenders.append(f"{py}: imports {mod}")
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                fn = node.func
+                if isinstance(fn, ast.Name) and fn.id in _BANNED_DYNAMIC_CALLS:
+                    offenders.append(f"{py}: calls {fn.id}()")
+                elif (
+                    isinstance(fn, ast.Attribute)
+                    and isinstance(fn.value, ast.Name)
+                    and fn.value.id == "os"
+                    and fn.attr == "system"
+                ):
+                    offenders.append(f"{py}: calls os.system()")
+    return offenders
+
+
+def test_no_dynamic_import_or_exec_surface_in_submit_path() -> None:
+    # Inc-7 red-team: a dynamic import / exec / shell could load an LLM past the static AST scan.
+    # The submit-path closure must contain NONE of that surface (it does not today).
+    offenders: list[str] = []
+    for root in _ROOTS:
+        offenders.extend(_dynamic_offenders_in(root))
+    assert not offenders, f"PHI1 dynamic-import/exec surface in the submit path: {offenders}"
+
+
+def test_dynamic_import_scan_catches_a_planted_importlib_llm_load(tmp_path: Path) -> None:
+    # teeth: a dynamic ``importlib.import_module('anthropic')`` (invisible to the static scan) IS
+    # caught by the dynamic-surface scan.
+    nested = tmp_path / "driver"
+    nested.mkdir(parents=True)
+    (nested / "_probe.py").write_text(
+        "import importlib\nm = importlib.import_module('anthropic')\n", encoding="utf-8"
+    )
+    assert _dynamic_offenders_in(tmp_path), "must catch a dynamic importlib LLM load"
+    # __import__ / exec are caught too
+    (nested / "_probe2.py").write_text("x = __import__('openai')\nexec('1')\n", encoding="utf-8")
+    found = _dynamic_offenders_in(tmp_path)
+    assert any("__import__" in o for o in found) and any("exec" in o for o in found)
