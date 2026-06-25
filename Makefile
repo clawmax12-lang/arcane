@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := check
 PY := uv run
 
-.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 inc4 inc5 inc6 leak-lint clean clean-cache
+.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 inc4 inc5 inc6 inc7 leak-lint clean clean-cache
 
 setup:
 	uv sync
@@ -103,3 +103,17 @@ inc6:
 	$(PY) mypy
 	$(PY) pytest --cov=trading --cov-report=term-missing --cov-fail-under=85 -q
 	@echo "Increment 6 gate: PASS"
+
+# Increment 7 gate: the FIRST real driver (regime classifier + allocator + record-only driver +
+# dormant scheduler). Mirrors inc6 + leak-lint now ALSO scans regime + allocator + driver + scheduler
+# (the new submit-path closure). The widened+recursive PHI1 AST scan, the DERIVED-can't-gate boundary
+# (mypy + import-ban), the regime leak-freedom canary, the family-size bound, the survivors-only
+# allocator, the operator-marker-write ban, and the end-to-end null (4 toys -> zero) all run as
+# first-class pytest steps, not just coverage.
+inc7:
+	$(PY) ruff check src tests
+	$(PY) black --check src tests
+	$(PY) python -m trading.data.leak_lint src/trading/data src/trading/factors src/trading/backtest src/trading/bias_gate src/trading/notify src/trading/guards src/trading/executor src/trading/regime src/trading/allocator src/trading/driver src/trading/scheduler
+	$(PY) mypy
+	$(PY) pytest --cov=trading --cov-report=term-missing --cov-fail-under=85 -q
+	@echo "Increment 7 gate: PASS"

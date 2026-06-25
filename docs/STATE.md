@@ -5,13 +5,16 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-25 · **Branch:** `build/increment-7-regime-allocator-driver` — pushed; `main` ff'd.
-**Head:** `c16ca2b` (Inc-7 PART A complete) · `make inc1..inc6` → PASS (95.31% cov, `mypy --strict`,
-leak-lint clean). **🚧 INCREMENT 7 IN PROGRESS** — the regime classifier + allocator + driver (the FIRST
-real driver). Design of record: `docs/INCREMENT-7-DESIGN.md` (panel `wf_66ff5e4b-832`, CONDITIONAL + 7
-must-fix folded in as blocking). Operator checkpoint signed all defaults: build-as-specified, 6-label
-vol×trend regime, GRD-4 single-file close + documented `rm -rf` defer.
+**Head:** `10a668d` (Inc-7 BUILD COMPLETE, C1–C7) · **`make inc1..inc7` → ALL SEVEN PASS** (95.37% cov,
+`mypy --strict`, leak-lint clean over data+factors+backtest+bias_gate+notify+guards+executor+regime+
+allocator+driver+scheduler). **🚧 INCREMENT 7 — BUILD COMPLETE; RED-TEAM NEXT.** The regime classifier
++ allocator + driver (the FIRST real driver) is built; all 7 design-panel skeptic must-fix folded in.
+Design of record: `docs/INCREMENT-7-DESIGN.md` (panel `wf_66ff5e4b-832`). Operator checkpoint signed all
+defaults: build-as-specified, 6-label vol×trend regime, GRD-4 single-file close + documented `rm -rf`
+defer. **ZERO orders submitted** — the 4 toys are gate-KILLED end-to-end (record-only). NEXT: the
+adversarial red-team (Part D), then remediate + seal. Do NOT seal until the red-team is done.
 
-## 🚧 Increment 7 — regime + allocator + driver (IN PROGRESS)
+## 🚧 Increment 7 — regime + allocator + driver (BUILD COMPLETE; red-team pending)
 
 **PART A — acting-surface hardening: ✅ COMPLETE (C1–C3).** All five carried Inc-6 tripwires + the 7
 skeptic must-fix closed, each TDD + gated + committed + pushed + ff-main:
@@ -34,11 +37,33 @@ skeptic must-fix closed, each TDD + gated + committed + pushed + ff-main:
   abandonment auto-flattens — `engage_abandonment` gains `broker_flat_fn` + the loop folds
   `verdict.triggered` into `auto_flat_needed`; hard_stop FIRST then flat).
 
-**NEXT: PART B — the regime classifier (C4–C5), NOT started.** A lean deterministic 6-label vol×trend
-DERIVED advisory label + `RegimeModel` interface; leak-free (prefix_stability + must-fail canary);
-type-disjoint from every gate/sizing/cap signature + AST import-ban (can NEVER gate/size/override);
-"regime only subtracts" + UNKNOWN non-narrowing. Then PART C (allocator + driver + dormant scheduler +
-`make inc7`), then red-team, then seal. The acting surface is RECORD-ONLY; no order has been submitted.
+**PART B — the regime classifier: ✅ COMPLETE (C4–C5).**
+- **C4 `8aac0af`** — `src/trading/regime/{labels,model}.py`: a lean DETERMINISTIC 6-label vol×trend
+  (causal expanding-quantile edges × trailing SMA, `shift(1)`-published) + UNKNOWN warmup + the
+  `RegimeModel` Protocol (HMM drop-in later, ADR §4/§5). Leak-free PROVEN via `prefix_stability` over
+  normal + degenerate frames with a must-FAIL full-sample-edge canary; pure-deterministic; no
+  random/time import.
+- **C5 `44134aa`** — `regime/posture.py` + the DERIVED-can't-gate boundary: `RegimeAssessment.reliability`
+  read-only = DERIVED; proven type-disjoint THREE ways (mypy `--strict` subprocess rejects a regime as a
+  gate/sizing input; AST ban — no bias_gate/executor/risk module imports `regime`; `require_gateable`
+  raises). The posture is SUBTRACTIVE-only (no add/size/grant surface); UNKNOWN is non-narrowing.
+
+**PART C — allocator + driver + scheduler: ✅ COMPLETE (C6–C8).**
+- **C6 `3869ff8`** — `allocator/allocate.py` (survivors-only via `from_decision`; subtractive regime
+  filter; confused-deputy; output ⊆ input; null-result regime-invariant) + `MAX_FAMILY_SIZE=16`
+  (skeptic A3: oversized/dup family → zero ledger writes, zero grants) + `StrategySpec.eligible_regimes`
+  (STRUCTURED, folded into `spec_hash` only when declared → toy hashes unchanged).
+- **C7 `10a668d`** — `driver/run_once.py` (`drive_once`: PIT-universe→backtest→gate→allocator→
+  `run_loop_pass`, RECORD-ONLY, fail-closed, safety still runs on assembly error) + `scheduler/loop.py`
+  (OFF by default, `SCHEDULER_ENABLE`-gated, RECORD_ONLY, dormant; A5: no submit-path module writes an
+  operator marker) + a live driver smoke (real Polygon → toys still all KILLED → zero).
+- **C8** — `make inc7` (mirrors inc6 + leak-lint over the 4 new packages). **`make inc1..inc7` ALL PASS.**
+
+**NEXT: PART D — the adversarial RED-TEAM (wave-based Workflow), then remediate + seal.** Attack the
+now-live driver: can it mint a grant for a non-survivor / forge the universe end-to-end (re-test FC-1
+through the real driver) / exceed a cap / submit without GO / let the regime gate or size / get an LLM
+into the hot loop / bypass an armed guard or §8 auto-flat? The acting surface is RECORD-ONLY; no order
+has been submitted. Do NOT seal until the red-team + remediation is complete.
 
 ---
 
