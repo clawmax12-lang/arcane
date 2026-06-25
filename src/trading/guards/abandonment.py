@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -116,13 +117,31 @@ def evaluate_abandonment(state: AbandonmentState, cfg: RiskConfig) -> Abandonmen
     return AbandonmentVerdict(False, None, "no abandonment trigger")
 
 
-def engage_abandonment(verdict: AbandonmentVerdict, kill_switch: _Halter, notifier: _Pager) -> None:
-    """Engage a triggered abandonment: HARD_STOP (durable, monotonic) then a best-effort RED
-    page."""
+def engage_abandonment(
+    verdict: AbandonmentVerdict,
+    kill_switch: _Halter,
+    notifier: _Pager,
+    *,
+    broker_flat_fn: Callable[[], object] | None = None,
+) -> bool:
+    """Engage a triggered abandonment: HARD_STOP (durable, monotonic) FIRST, then auto-flatten open
+    positions (GRD-3, best-effort AFTER the latch), then a best-effort RED page.
+
+    Returns True iff a RED page was DELIVERED (False if not triggered, or triggered but the page
+    raised). The loop uses this to fail paging CLOSED — a dropped abandonment page still arms the
+    §5.2 ladder + a durable PAGE_PENDING tombstone. ``broker_flat_fn`` flattens for OUT-OF-LOOP
+    callers (a future CLI/agent); the loop flattens via its own auto-flat composition
+    (``verdict.triggered`` folded into ``auto_flat_needed``), so it passes ``None`` here.
+    """
     if not verdict.triggered:
-        return
+        return False
     reason = f"ABANDON {verdict.trigger_id}: {verdict.reason}"
-    kill_switch.hard_stop(reason)  # durable + idempotent FIRST
-    # a dropped page must not undo the engaged hard_stop (already latched)
-    with contextlib.suppress(Exception):
+    kill_switch.hard_stop(reason)  # durable + idempotent FIRST (latch before the flat/page)
+    if broker_flat_fn is not None:
+        with contextlib.suppress(Exception):  # GRD-3: a flat failure must never un-halt us
+            broker_flat_fn()
+    try:
         notifier.page_operator(Severity.RED, reason)
+        return True
+    except Exception:  # a dropped page must not undo the engaged hard_stop (already latched)
+        return False

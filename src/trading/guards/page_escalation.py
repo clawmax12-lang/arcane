@@ -55,9 +55,12 @@ class PageState:
 class PageEscalation:
     """Disk-persisted, clock-injected escalation state machine for ONE open operator page."""
 
-    def __init__(self, state_path: Path, *, ack_path: Path | None = None) -> None:
+    def __init__(
+        self, state_path: Path, *, ack_path: Path | None = None, pending_path: Path | None = None
+    ) -> None:
         self._path = state_path
         self._ack = ack_path or state_path.parent / "PAGE_ACK"
+        self._pending = pending_path or state_path.parent / "PAGE_PENDING"
 
     def open_page(self, page_id: str, *, opened_epoch: float) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,13 +68,34 @@ class PageEscalation:
             self._path, json.dumps({"page_id": page_id, "opened_epoch": opened_epoch})
         )
 
+    def is_open(self) -> bool:
+        """True iff an episode page is on disk (GRD-1: the loop opens ONLY if not already open)."""
+        return self._load() is not None
+
+    def mark_pending(self, detail: str, *, opened_epoch: float) -> None:
+        """GRD-2: durable tombstone that a RED page was NOT confirmed delivered (a swallowed page).
+
+        Cleared ONLY by an operator ACK / resolve — never by a later non-throwing delivery — so a
+        dead-chat (a page that does not raise but nobody reads) cannot silently clear it. The armed
+        §5.2 ladder is the real fail-closed path (it keeps resending and ultimately liquidates).
+        """
+        self._pending.parent.mkdir(parents=True, exist_ok=True)
+        self._atomic_write(
+            self._pending, json.dumps({"detail": detail, "opened_epoch": opened_epoch})
+        )
+
+    def is_pending(self) -> bool:
+        return self._pending.exists()
+
     def acknowledge(self, page_id: str) -> None:
         self._ack.parent.mkdir(parents=True, exist_ok=True)
         self._atomic_write(self._ack, page_id)
+        self._pending.unlink(missing_ok=True)  # operator ACK clears the dropped-page tombstone
 
     def resolve(self) -> None:
         self._path.unlink(missing_ok=True)
         self._ack.unlink(missing_ok=True)
+        self._pending.unlink(missing_ok=True)
 
     def tick(self, now_epoch: float) -> EscalationAction:
         state = self._load()
