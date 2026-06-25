@@ -5,7 +5,7 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-25 · **Branch:** `build/increment-7-regime-allocator-driver` — pushed; `main` ff'd.
-**Head:** `<seal>` (Inc-7 SEALED) · **`make inc1..inc7` → ALL SEVEN PASS** (95.37% cov, `mypy --strict`,
+**Head:** `d9ca306` (Inc-7 SEALED; this STATE ref-fix sits on top) · **`make inc1..inc7` → ALL SEVEN PASS** (95.37% cov, `mypy --strict`,
 leak-lint clean over the full submit-path closure incl. regime+allocator+driver+scheduler). **✅
 INCREMENT 7 SEALED + RED-TEAMED.** The regime classifier + allocator + the FIRST real driver (the first
 machine that wires `FamilyMember` → gate → allocator → the record-only executor loop), design-panel-
