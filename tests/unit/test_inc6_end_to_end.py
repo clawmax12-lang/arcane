@@ -18,11 +18,8 @@ import _gate_fixtures as fx
 from trading.backtest.engine import SymbolPanel
 from trading.bias_gate.gate import FamilyMember, evaluate_family
 from trading.bias_gate.high_water_mark import NTrialsHighWaterMark
-from trading.data.membership_artifact import (
-    MembershipArtifact,
-    ProvenanceBinding,
-    provenance_binding_from,
-)
+from trading.data.membership_cache import MembershipCache
+from trading.data.universe import UniverseSnapshot
 from trading.executor.grant import AllocationDenied, AllocationGrant
 
 _PURGE = 200  # matches the composer fixture (>= deepest toy warmup + label_horizon)
@@ -47,28 +44,26 @@ def _pit_panel() -> SymbolPanel:
     )
 
 
-def _binding_and_artifact(panel: SymbolPanel) -> tuple[ProvenanceBinding, MembershipArtifact]:
-    # Derive the binding from a REAL POLYGON_PIT snapshot (token-gated producer) + the panel facts —
-    # never hand-built (red-team D1). The gate cross-checks traded_symbols/window against the panel.
+def _universe_and_cache(
+    tmp_path: Path, panel: SymbolPanel
+) -> tuple[UniverseSnapshot, MembershipCache]:
+    # A REAL base-produced POLYGON_PIT snapshot (token-gated producer; carries the base-minted PIT
+    # proof) + a content-addressed cache the GATE itself reads (D1-residual: no caller-supplied
+    # binding/artifact). The gate derives the binding from the panel and loads the artifact by hash.
     syms = tuple(sorted(panel.bars.keys()))
-    idx = panel.bars[syms[0]].index
     snapshot = fx.pit_snapshot(syms, fx.AS_OF.ts)
-    artifact = fx.matching_artifact(syms, fx.AS_OF.ts)  # hash == snapshot.meta.universe_hash
-    binding = provenance_binding_from(
-        snapshot,
-        traded_symbols=syms,
-        window_start=idx.min().to_pydatetime(),
-        window_end=idx.max().to_pydatetime(),
-    )
-    return binding, artifact
+    cache = fx.seeded_cache(tmp_path, syms, fx.AS_OF.ts)  # key == snapshot.meta.universe_hash
+    return snapshot, cache
 
 
-def _toy_family(tmp_path: Path) -> tuple[list[FamilyMember], object, NTrialsHighWaterMark]:
+def _toy_family(
+    tmp_path: Path,
+) -> tuple[list[FamilyMember], object, NTrialsHighWaterMark, MembershipCache]:
     led = fx.ledger(tmp_path)
     reg = fx.registry(led)
     panel = _pit_panel()
     folds = fx.WalkForwardConfig(purge_bars=_PURGE)
-    binding, artifact = _binding_and_artifact(panel)
+    snapshot, cache = _universe_and_cache(tmp_path, panel)
     members: list[FamilyMember] = []
     for name in _TOYS:
         strat = fx.resolved(name, reg)
@@ -81,16 +76,17 @@ def _toy_family(tmp_path: Path) -> tuple[list[FamilyMember], object, NTrialsHigh
                 folds=folds,
                 as_of=fx.AS_OF,
                 result=result,
-                binding=binding,
-                artifact=artifact,
+                universe=snapshot,
             )
         )
-    return members, led, NTrialsHighWaterMark(tmp_path / "hwm.json")
+    return members, led, NTrialsHighWaterMark(tmp_path / "hwm.json"), cache
 
 
 def test_t2_passes_for_the_toys_but_the_stats_still_kill_them(tmp_path: Path) -> None:
-    members, led, hwm = _toy_family(tmp_path)
-    decisions = evaluate_family(members, ledger=led, hwm=hwm, label_horizon=1)
+    members, led, hwm, cache = _toy_family(tmp_path)
+    decisions = evaluate_family(
+        members, ledger=led, hwm=hwm, label_horizon=1, membership_cache=cache
+    )
     assert len(decisions) == 4
     for d in decisions:
         assert d.allocated is False  # the gate's JOB on a no-edge toy: say NO
@@ -103,8 +99,10 @@ def test_t2_passes_for_the_toys_but_the_stats_still_kill_them(tmp_path: Path) ->
 
 
 def test_zero_grants_and_zero_orders(tmp_path: Path) -> None:
-    members, led, hwm = _toy_family(tmp_path)
-    decisions = evaluate_family(members, ledger=led, hwm=hwm, label_horizon=1)
+    members, led, hwm, cache = _toy_family(tmp_path)
+    decisions = evaluate_family(
+        members, ledger=led, hwm=hwm, label_horizon=1, membership_cache=cache
+    )
     grants = []
     for d in decisions:
         with contextlib.suppress(AllocationDenied):

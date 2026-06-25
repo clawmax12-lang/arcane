@@ -157,23 +157,23 @@ def test_covers_window_logic_directly() -> None:
     assert _covers_window(inactive, _WIN_START, _WIN_END) is False
 
 
-def test_gate_panel_cross_check_rejects_a_forged_subset() -> None:
-    # red-team D1: even a producer-minted binding is rejected if its traded-set/window does not
-    # match
-    # the panel the engine actually ran (a driver cannot bind a survivor-subset).
+def test_gate_derives_binding_from_panel_no_caller_subset_possible(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # red-team D1-residual: the gate now DERIVES the binding from the proof-bearing snapshot + the
+    # REAL panel, so a forged survivor-subset binding is UNREPRESENTABLE — there is no caller
+    # binding to forge. A genuine snapshot + a seeded cache PASSES; a hand-built (proof-less)
+    # snapshot fails CLOSED before any hash compare.
     from trading.bias_gate.gate import _t2_component
 
     panel = fx.panel(300, n_symbols=2)  # SYM0, SYM1
-    idx = panel.bars["SYM0"].index
     snap = fx.pit_snapshot(("SYM0", "SYM1"), fx.AS_OF.ts)
-    art = fx.matching_artifact(("SYM0", "SYM1"), fx.AS_OF.ts)
-    ws, we = idx.min().to_pydatetime(), idx.max().to_pydatetime()
-    subset = provenance_binding_from(snap, traded_symbols=("SYM0",), window_start=ws, window_end=we)
-    assert _t2_component(_result(), subset, art, panel).passed is False  # subset != panel
-    full = provenance_binding_from(
-        snap, traded_symbols=("SYM0", "SYM1"), window_start=ws, window_end=we
-    )
-    assert _t2_component(_result(), full, art, panel).passed is True  # honest binding passes
+    cache = fx.seeded_cache(tmp_path, ("SYM0", "SYM1"), fx.AS_OF.ts)
+    assert (
+        _t2_component(_result(), snap, panel, cache).passed is True
+    )  # gate-derived binding passes
+    forged = fx.forged_pit_snapshot(("SYM0", "SYM1"), fx.AS_OF.ts)  # no base-minted proof
+    assert (
+        _t2_component(_result(), forged, panel, cache).passed is False
+    )  # unbindable -> fail closed
 
 
 def test_global_bool_path_is_deleted() -> None:

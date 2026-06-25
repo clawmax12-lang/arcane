@@ -77,6 +77,45 @@ def matching_artifact(symbols: tuple[str, ...], as_of_dt: datetime):  # type: ig
     return MembershipArtifact(1, SourceTier.POLYGON_PIT, as_of_dt, as_of_dt, members)
 
 
+def seeded_cache(tmp_path: Path, symbols: tuple[str, ...], as_of_dt: datetime):  # type: ignore[no-untyped-def]
+    """A ``MembershipCache`` with the matching artifact sealed under its content hash.
+
+    The sealed key equals ``pit_snapshot(symbols, as_of_dt).meta.universe_hash``, so the gate's
+    ``cache.get(universe.meta.universe_hash)`` resolves the real artifact (the D1-residual closure).
+    """
+    from trading.data.membership_cache import MembershipCache
+
+    cache = MembershipCache(tmp_path / "membership")
+    cache.put(matching_artifact(symbols, as_of_dt))
+    return cache
+
+
+def forged_pit_snapshot(symbols: tuple[str, ...], as_of_dt: datetime):  # type: ignore[no-untyped-def]
+    """A HAND-BUILT POLYGON_PIT ``UniverseSnapshot`` with NO base-minted proof (``pit_proof=None``).
+
+    This is the red-team FC-1 forge: a fabricated PIT universe carrying a plausible (even
+    hash-matching) ``universe_hash`` but never produced by the ``@final as_of_members`` base. It is
+    UNBINDABLE — ``provenance_binding_from`` requires the base-minted ``PITMembershipProof``.
+    """
+    import pandas as pd
+
+    from trading.data.membership_artifact import membership_artifact_hash
+    from trading.data.universe import SourceTier, UniverseMeta, UniverseSnapshot
+
+    forged_hash = membership_artifact_hash(matching_artifact(symbols, as_of_dt))
+    meta = UniverseMeta(
+        as_of=as_of_dt,
+        session=pd.Timestamp(as_of_dt),
+        source_tier=SourceTier.POLYGON_PIT,
+        is_pit_membership=True,
+        member_count=len(symbols),
+        universe_hash=forged_hash,
+        loader="forged-by-hand",
+        membership_vintage=as_of_dt,
+    )
+    return UniverseSnapshot(symbols=frozenset(symbols), meta=meta, pit_proof=None)
+
+
 def ledger(tmp_path: Path) -> TrialLedger:
     return TrialLedger(tmp_path / "trials.sqlite", clock=lambda: 1.0)
 

@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from typing import Final
 
 import numpy as np
-import pandas as pd
 
 from trading.backtest.cost_model import CostModel
 from trading.backtest.engine import BacktestEngine, SymbolPanel
@@ -54,8 +53,11 @@ from trading.bias_gate.thresholds import (
 )
 from trading.bias_gate.trial_identity import eval_trial_params
 from trading.bias_gate.verdict import GateComponent, GateDecision
-from trading.data.membership_artifact import MembershipArtifact, ProvenanceBinding
+from trading.data.errors import ProvenanceBindingError
+from trading.data.membership_artifact import provenance_binding_from
+from trading.data.membership_cache import MembershipCache
 from trading.data.pit import AsOf
+from trading.data.universe import UniverseSnapshot
 from trading.factors.trial_ledger import TrialLedger
 
 __all__ = [
@@ -88,9 +90,12 @@ class FamilyMember:
     """One candidate bundle: the resolved strategy, its panel/cost/folds, and the sealed result.
 
     The driver runs ``BacktestEngine.run`` to produce ``result`` (and assert A3 purge) BEFORE the
-    gate sees it; the gate re-derives the OOS series and re-checks consistency (T1). ``binding`` +
-    ``artifact`` carry the hash-bound Polygon PIT membership the T2 verifier checks against; absent
-    (the toys, any non-PIT universe) ⇒ T2 fails CLOSED and the member is KILLED.
+    gate sees it; the gate re-derives the OOS series and re-checks consistency (T1). ``universe`` is
+    the PROOF-BEARING ``UniverseSnapshot`` the ``@final PolygonPITUniverse.as_of_members`` base
+    produced (carrying the unforgeable ``PITMembershipProof``); the gate DERIVES the T2
+    ``ProvenanceBinding`` from it + the real panel and LOADS the artifact from the content-addressed
+    cache (red-team D1-residual — no caller supplies a binding/artifact). Absent (the toys, any
+    non-PIT universe) OR a hand-built/proof-less snapshot ⇒ T2 fails CLOSED ⇒ the member is KILLED.
     """
 
     strategy: ResolvedStrategy
@@ -99,8 +104,7 @@ class FamilyMember:
     folds: WalkForwardConfig
     as_of: AsOf
     result: BacktestResult
-    binding: ProvenanceBinding | None = None
-    artifact: MembershipArtifact | None = None
+    universe: UniverseSnapshot | None = None
 
 
 def _wf_ok(sharpe: float, frac: float, n_folds: int, train: int, test: int, step: int) -> bool:
@@ -169,26 +173,51 @@ def combine_member_verdict(
 
 def _t2_component(
     result: BacktestResult,
-    binding: ProvenanceBinding | None,
-    artifact: MembershipArtifact | None,
+    universe: UniverseSnapshot | None,
     panel: SymbolPanel | None,
+    membership_cache: MembershipCache | None,
 ) -> GateComponent:
-    """T2 with a PANEL CROSS-CHECK (red-team D1): the binding's traded set + window MUST equal the
-    panel the engine actually ran, so a driver cannot bind a forged survivor-subset/window. Then run
-    the hash-bound survivorship verifier (the binding hash is itself unforgeable — token-gated)."""
-    if binding is not None and panel is not None:
-        index = next(iter(panel.bars.values())).index
-        expected_symbols = tuple(sorted(panel.bars.keys()))
-        same_window = (
-            pd.Timestamp(binding.window_start) == index.min()
-            and pd.Timestamp(binding.window_end) == index.max()
+    """T2 — the gate is the SOLE place the binding is minted and the artifact is fetched (D1-resid).
+
+    No caller hands the gate a binding/artifact. From the proof-bearing ``universe`` snapshot + the
+    REAL panel facts the gate DERIVES the ``ProvenanceBinding`` via ``provenance_binding_from`` (it
+    requires the base-minted ``PITMembershipProof`` — a hand-built/non-PIT snapshot raises and the
+    gate fails CLOSED, BEFORE any hash compare) and LOADS the artifact from the content-addressed
+    cache by ``universe.meta.universe_hash`` (a miss/tamper self-heals to ``None`` ⇒ fail closed).
+    The binding's traded-set/window come from the panel, so a forged survivor-subset is impossible.
+    A degenerate panel (empty bars / empty index / zero-width window — red-team A2) is a per-member
+    KILL, never a ``StopIteration`` that aborts the whole family.
+    """
+    if universe is None or panel is None or not panel.bars:
+        return GateComponent(
+            "T2_survivorship",
+            False,
+            "survivorship NOT verifiable — no proof-bearing PIT universe bound to this result "
+            "(fail closed)",
         )
-        if binding.traded_symbols != expected_symbols or not same_window:
-            return GateComponent(
-                "T2_survivorship",
-                False,
-                "binding traded-set/window does not match the backtested panel (forged binding)",
-            )
+    index = next(iter(panel.bars.values())).index
+    if index.empty:
+        return GateComponent("T2_survivorship", False, "degenerate empty panel index — fail closed")
+    window_start = index.min().to_pydatetime()
+    window_end = index.max().to_pydatetime()
+    if window_start == window_end:
+        return GateComponent("T2_survivorship", False, "zero-width backtest window — fail closed")
+    try:
+        binding = provenance_binding_from(
+            universe,
+            traded_symbols=tuple(sorted(panel.bars.keys())),
+            window_start=window_start,
+            window_end=window_end,
+        )
+    except ProvenanceBindingError as exc:
+        return GateComponent(
+            "T2_survivorship",
+            False,
+            f"universe not bindable (hand-built / non-PIT / proof-less snapshot): {exc}",
+        )
+    artifact = (
+        membership_cache.get(universe.meta.universe_hash) if membership_cache is not None else None
+    )
     return t2_survivorship(result, binding, artifact)
 
 
@@ -199,15 +228,15 @@ def judge_member(
     family_sharpes: Sequence[float],
     stressed_evidences: Sequence[GateEvidence],
     *,
-    binding: ProvenanceBinding | None = None,
-    artifact: MembershipArtifact | None = None,
+    universe: UniverseSnapshot | None = None,
     panel: SymbolPanel | None = None,
+    membership_cache: MembershipCache | None = None,
 ) -> tuple[GateComponent, ...]:
     """The 7 PER-MEMBER components (T1/T2/DSR/PSR/WF/enough_samples/cost_stress); fail-closed.
 
     T1 already passed (``build_evidence`` raised otherwise). DSR/PSR read the per-obs recompute; the
-    cost-stress requires DSR/PSR/WF to STILL hold on each higher-cost re-run. T2 binds against the
-    hash-bound PIT membership artifact, cross-checked against the panel (absent ⇒ fail closed).
+    cost-stress requires DSR/PSR/WF to STILL hold on each higher-cost re-run. T2 is derived by the
+    gate from the proof-bearing ``universe`` snapshot + panel + cache (absent ⇒ fail closed).
     """
     dsr = dsr_probability(evidence.oos_returns, n_trials, family_sharpes)
     psr = psr_probability(evidence.oos_returns)
@@ -219,7 +248,7 @@ def judge_member(
     )
     return (
         GateComponent("T1_consistency", True, "recompute matched the sealed result"),
-        _t2_component(result, binding, artifact, panel),
+        _t2_component(result, universe, panel, membership_cache),
         _passes_above("DSR_deflated_sharpe", dsr, DSR_THRESHOLD),
         _passes_above("PSR_prob_sharpe", psr, PSR_THRESHOLD),
         GateComponent("WF_OOS", wf_oos_ok(result), "walk-forward OOS criterion"),
@@ -259,6 +288,7 @@ def evaluate_family(
     ledger: TrialLedger,
     hwm: NTrialsHighWaterMark,
     label_horizon: int = 1,
+    membership_cache: MembershipCache | None = None,
 ) -> tuple[GateDecision, ...]:
     """The ALL-of bias/kill gate over a candidate FAMILY → one accept/kill verdict per member.
 
@@ -338,9 +368,9 @@ def evaluate_family(
                 n_trials,
                 family_sharpes,
                 stressed_evs,
-                binding=m.binding,
-                artifact=m.artifact,
+                universe=m.universe,
                 panel=m.panel,
+                membership_cache=membership_cache,
             )
             comps = (*member_comps, pbo_comp, spa_comp)
         decisions.append(combine_member_verdict(m.result.spec_hash, comps, n_trials))
