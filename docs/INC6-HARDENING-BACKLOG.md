@@ -127,3 +127,51 @@ zero-order-invariant (structural, not incidental).
 These were red-team-reported and are consistent with the code read; the driver increment that wires the
 acting loop (and arms paging/abandonment auto-flat) is their natural home — fix them there with the
 driver, before any real order.
+
+---
+
+# Increment 7 PART A — carried tripwires CLOSED (2026-06-25)
+
+The driver increment (Inc-7) closes ALL of the carried Inc-6 tripwires as PART A, BEFORE wiring the
+first real driver — each TDD + gated (`make inc1..inc6` green) + committed. See
+`docs/INCREMENT-7-DESIGN.md` (panel `wf_66ff5e4b-832`, CONDITIONAL + 7 skeptic must-fix folded in).
+
+- **D1-residual — CLOSED (C1 `359a989`).** `FamilyMember` no longer carries a caller-supplied
+  `binding`/`artifact`; it carries the proof-bearing `UniverseSnapshot` only. `evaluate_family`/
+  `_t2_component` DERIVE the `ProvenanceBinding` (`provenance_binding_from`, which requires the
+  base-minted `PITMembershipProof`) and LOAD the artifact from the content-addressed `MembershipCache`
+  by `snapshot.meta.universe_hash`. A hand-built/proof-less POLYGON_PIT snapshot is UNBINDABLE → T2
+  fails closed before any hash compare; a cache miss/tamper self-heals to None → fail closed. The gate
+  makes NO network call (HELD invariant preserved — the driver fetches/seals, the gate only reads).
+  Also closed **skeptic A2**: empty/degenerate panel guarded before `next(iter(panel.bars))` ⇒ a
+  per-member KILL, never a `StopIteration` aborting the family.
+- **PHI1-3 — CLOSED (C2 `60474af`).** The PHI1 AST scan is now RECURSIVE (`rglob`, closing **skeptic
+  A1**: a nested `regime/llm/client.py` can no longer slip a non-recursive glob) and covers the full
+  submit-path closure (executor/guards/bias_gate/data/notify/backtest/factors/risk + the new Inc-7
+  packages regime/allocator/driver/scheduler). A planted-nested-import must-fail test proves the teeth;
+  a roots-exist+non-empty test stops a moved package silently emptying the scan. Verified ZERO banned
+  imports in the widened closure today.
+- **GRD-4 — CLOSED for the single-file attack (C2 `60474af`).** A durable `state/HARD_STOP.tombstone`
+  makes a latched HARD_STOP survive deletion of `state/kill_switch.json` alone (missing json + present
+  tombstone ⇒ HARD_STOPPED). Crash-ordering pinned both directions: `arm()` writes the ARMED json FIRST
+  then unlinks the tombstone, and a present validly-ARMED json WINS over a stale tombstone (`_load`
+  consults the tombstone only when the json is missing). **DOCUMENTED RESIDUAL (operator/Murphy):** a
+  whole-dir `rm -rf state/` wipe is indistinguishable from a first-ever boot — no in-band file can
+  defend it (same class as the ledger-deletion residual). Operator-approved scope.
+- **GRD-1 — CLOSED (C3 `c16ca2b`).** `run_loop_pass` ARMS the §5.2 ladder (`open_page`) on a RED
+  disaster so the 15/30/60-min resend + 60-min terminal auto-liquidate fire. Idempotent first-write-wins
+  (**skeptic A4**): opens ONLY if no episode is open, so a co-occurring second disaster cannot reset
+  `opened_epoch` and starve the terminal clock; a persistent un-ACKed halt ticks every pass; a
+  recovered + re-armed pass resolves the episode.
+- **GRD-2 — CLOSED (C3 `c16ca2b`).** A RED page NOT confirmed delivered fails CLOSED: it still enters
+  the armed ladder (the retry) AND leaves a durable `state/PAGE_PENDING` tombstone, cleared ONLY by an
+  operator ACK/resolve (never by a later non-throwing dead-chat delivery). `engage_abandonment` now
+  reports paging delivery; `LoopPassResult.page_undelivered` surfaces it.
+- **GRD-3 — CLOSED (C3 `c16ca2b`).** §8 abandonment auto-flattens open positions: `engage_abandonment`
+  gains an optional `broker_flat_fn` (out-of-loop callers) AND the loop folds `verdict.triggered` into
+  `auto_flat_needed`. Ordering pinned: hard_stop latched FIRST, then the flat (a flat failure never
+  un-halts), `close_all` idempotent.
+
+The remaining Inc-6 DEFERs that belong to a LATER increment (universe-completeness "panel == full
+PIT-active set"; D3-deep recompute-from-evidence if `GateDecision` ever becomes persistable) are carried
+forward as HARD tripwires to the first REAL order (NOT this record-only increment).

@@ -4,17 +4,50 @@
 > `docs/adr/ADR-001-foundation.md`, then run `make inc1`.** This is the canonical,
 > version-controlled state so the process is never lost to a context compaction.
 
-**As of:** 2026-06-23 · **Branch:** `build/increment-6-paper-submit` — pushed; `main` fast-forwarded.
-**Head:** `99e1819` (Inc-6 red-team ROUND 2 remediation; this STATE+backlog+memory seal sits on top) ·
-`make inc1..inc6` → PASS (95.21% cov, `mypy --strict`, leak-lint clean over data + factors + backtest +
-bias_gate + notify + guards + executor). **✅ INCREMENT 6 SEALED + RE-AUDITED (round 2)** — the FIRST
-paper-submit machinery (Polygon PIT universe + unforgeable hash-bound T2 + Murphy guards G1–G10 + §8
-abandonment + §5.2 paging + the gate-gated RECORD-ONLY submit), design-panel-driven, red-team-hardened
-across TWO independent rounds. **The gate's verdict on the 4 toys: ALL KILLED even with T2 CAPABLE**
-(ADR §0 success — the statistics wall holds independently). **ZERO paper orders submitted** — the first
-real order is DEFERRED to an explicit per-order operator GO (prereqs + tripwires in
-`docs/INC6-HARDENING-BACKLOG.md`). **NEXT (a future run, NOT started): the regime classifier + allocator**
-(the first real driver that wires `FamilyMember` through the gate). Do NOT start it.
+**As of:** 2026-06-25 · **Branch:** `build/increment-7-regime-allocator-driver` — pushed; `main` ff'd.
+**Head:** `c16ca2b` (Inc-7 PART A complete) · `make inc1..inc6` → PASS (95.31% cov, `mypy --strict`,
+leak-lint clean). **🚧 INCREMENT 7 IN PROGRESS** — the regime classifier + allocator + driver (the FIRST
+real driver). Design of record: `docs/INCREMENT-7-DESIGN.md` (panel `wf_66ff5e4b-832`, CONDITIONAL + 7
+must-fix folded in as blocking). Operator checkpoint signed all defaults: build-as-specified, 6-label
+vol×trend regime, GRD-4 single-file close + documented `rm -rf` defer.
+
+## 🚧 Increment 7 — regime + allocator + driver (IN PROGRESS)
+
+**PART A — acting-surface hardening: ✅ COMPLETE (C1–C3).** All five carried Inc-6 tripwires + the 7
+skeptic must-fix closed, each TDD + gated + committed + pushed + ff-main:
+- **C1 `359a989`** — D1-residual: `FamilyMember` carries the proof-bearing `UniverseSnapshot` only; the
+  GATE derives the `ProvenanceBinding` (`provenance_binding_from`, requires the base-minted
+  `PITMembershipProof`) + LOADS the artifact from the content-addressed `MembershipCache` by
+  `meta.universe_hash`. A forged/hand-built universe is UNREPRESENTABLE end-to-end (unbindable → T2
+  fails closed); cache miss → fail closed; **A2** degenerate-panel guard (per-member KILL, no
+  `StopIteration`). Re-confirmed: even with T2 CAPABLE the 4 toys STILL all KILL → zero grants.
+- **C2 `60474af`** — **PHI1-3/A1**: AST scan now RECURSIVE (`rglob`) + widened to the full submit-path
+  closure (executor/guards/bias_gate/data/notify/backtest/factors/risk + new regime/allocator/driver/
+  scheduler), nested-import must-fail teeth; created the 4 package skeletons. **GRD-4**: durable
+  `state/HARD_STOP.tombstone` closes the single-file `kill_switch.json` deletion (missing json + present
+  tombstone → HARD_STOPPED); `arm()` writes ARMED-json-first-then-unlinks, a valid ARMED json wins over
+  a stale tombstone; `rm -rf state/` is the documented operator/Murphy residual.
+- **C3 `c16ca2b`** — **GRD-1** (loop arms the §5.2 ladder, idempotent first-write-wins so the 60-min
+  terminal clock never resets — skeptic A4), **GRD-2** (a dropped RED page fails CLOSED: still enters
+  the armed ladder + leaves a durable `PAGE_PENDING` tombstone cleared only by operator ACK;
+  `engage_abandonment` reports paging delivery; `LoopPassResult.page_undelivered`), **GRD-3** (§8
+  abandonment auto-flattens — `engage_abandonment` gains `broker_flat_fn` + the loop folds
+  `verdict.triggered` into `auto_flat_needed`; hard_stop FIRST then flat).
+
+**NEXT: PART B — the regime classifier (C4–C5), NOT started.** A lean deterministic 6-label vol×trend
+DERIVED advisory label + `RegimeModel` interface; leak-free (prefix_stability + must-fail canary);
+type-disjoint from every gate/sizing/cap signature + AST import-ban (can NEVER gate/size/override);
+"regime only subtracts" + UNKNOWN non-narrowing. Then PART C (allocator + driver + dormant scheduler +
+`make inc7`), then red-team, then seal. The acting surface is RECORD-ONLY; no order has been submitted.
+
+---
+
+## ✅ Increment 6 — FIRST paper submit (SEALED + RE-AUDITED round 2)
+
+Sealed at `99e1819`/`3769e38` (`make inc1..inc6` PASS). The FIRST paper-submit machinery (Polygon PIT +
+unforgeable hash-bound T2 + Murphy guards G1–G10 + §8 abandonment + §5.2 paging + gate-gated RECORD-ONLY
+submit), design-panel-driven, red-team-hardened across TWO independent rounds. **The 4 toys: ALL KILLED
+even with T2 CAPABLE** (ADR §0). **ZERO paper orders** — Inc-7 is the first real driver (still record-only).
 
 ## ✅ Increment 6 — FIRST paper submit (Polygon PIT + Murphy guards + gate-gated record-only submit) — SEALED
 
