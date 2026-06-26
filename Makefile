@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := check
 PY := uv run
 
-.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 inc4 inc5 inc6 inc7 leak-lint clean clean-cache
+.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 inc4 inc5 inc6 inc7 inc8 leak-lint clean clean-cache
 
 setup:
 	uv sync
@@ -117,3 +117,20 @@ inc7:
 	$(PY) mypy
 	$(PY) pytest --cov=trading --cov-report=term-missing --cov-fail-under=85 -q
 	@echo "Increment 7 gate: PASS"
+
+# Increment 8 gate: the slow-loop AGENT framework + two-way Telegram operator console (the FIRST time
+# LLMs enter the system). Mirrors inc7. The new packages trading/slowloop + trading/console live
+# OUTSIDE the deterministic submit path and legitimately use LLM/network primitives, so the leak-lint
+# scope is DELIBERATELY UNCHANGED (frozen) — it does NOT scan slowloop/console. The PHI1 boundary is
+# instead proven by tests/unit/test_inc8_boundary.py: no submit-path root imports trading.slowloop or
+# trading.console (static AND dynamic), with planted-import teeth; PHI1 _ROOTS must NOT contain them;
+# and the agent/console output stays advisory/report-only (reliability never gateable, console
+# escalate-only, no broker write, refuse-trade-order). mypy already type-checks the new packages
+# (files=["src/trading"]). These boundary teeth run as first-class pytest steps, not just coverage.
+inc8:
+	$(PY) ruff check src tests
+	$(PY) black --check src tests
+	$(PY) python -m trading.data.leak_lint src/trading/data src/trading/factors src/trading/backtest src/trading/bias_gate src/trading/notify src/trading/guards src/trading/executor src/trading/regime src/trading/allocator src/trading/driver src/trading/scheduler
+	$(PY) mypy
+	$(PY) pytest --cov=trading --cov-report=term-missing --cov-fail-under=85 -q
+	@echo "Increment 8 gate: PASS"
