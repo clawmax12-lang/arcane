@@ -4,19 +4,69 @@
 > `docs/adr/ADR-001-foundation.md`, then run `make inc1`.** This is the canonical,
 > version-controlled state so the process is never lost to a context compaction.
 
-**As of:** 2026-06-25 · **Branch:** `build/increment-7-regime-allocator-driver` — pushed; `main` ff'd.
-**Head:** `d9ca306` (Inc-7 SEALED; this STATE ref-fix sits on top) · **`make inc1..inc7` → ALL SEVEN PASS** (95.37% cov, `mypy --strict`,
-leak-lint clean over the full submit-path closure incl. regime+allocator+driver+scheduler). **✅
-INCREMENT 7 SEALED + RED-TEAMED.** The regime classifier + allocator + the FIRST real driver (the first
-machine that wires `FamilyMember` → gate → allocator → the record-only executor loop), design-panel-
-driven (`wf_66ff5e4b-832`, CONDITIONAL + 7 skeptic must-fix folded in), red-team-hardened
-(`wf_066957e9-703`: 5 of 6 lenses throttled → **lead finished SINGLE-THREADED** with own repros; verdict
-**ADR §0 HOLDS, no reachable hole, ZERO orders**). All 5 carried Inc-6 tripwires CLOSED; the regime is
-DERIVED/advisory/subtractive (can NEVER gate/size/override); the driver is RECORD-ONLY; the scheduler is
-DORMANT. **ZERO paper orders submitted** — the 4 toys are gate-KILLED end-to-end (ADR §0). The first
-real order remains DEFERRED to a per-order operator GO. Red-team triage + HARD tripwires:
-`docs/INC7-HARDENING-BACKLOG.md`. **NEXT (a future run, NOT started): the slow-loop AGENTS increment**
-(news/macro/sentiment synthesis feeding the regime — agent-fed regime was DEFERRED here). Do NOT start it.
+**As of:** 2026-06-26 · **Branch:** `build/increment-8-agents-console` — pushed; `main` ff'd.
+**Head/main:** `a155d7a` (Inc-8 BUILD COMPLETE; the red-team seal commit sits on top) · **`make inc1..inc8`
+→ ALL EIGHT PASS** (95.51% cov, `mypy --strict`, leak-lint clean over the unchanged submit-path closure).
+**✅ INCREMENT 8 SEALED + RED-TEAMED.** The slow-loop AGENT framework + the two-way Telegram operator
+console — the FIRST time LLMs enter ARCANE. Design-panel-driven (`wf_7e98b8c9-e4e`: 3/5 lenses, 2
+throttled → lead synthesized single-threaded), operator-confirmed at the checkpoint (advisory regime =
+**REPORT-ONLY Model A**; **3 agents** = news + regime-synth + daily-report; **full Swedish console**),
+red-team-hardened (`wf_5f80b480-871`: 2/6 finders confirmed HOLDS, 4 throttled → **lead finished
+SINGLE-THREADED** with own `uv run python` repros RT-1..RT-7; verdict **ADR §0 + PHI1 HOLD, no reachable
+hole, ZERO orders**). The agents/console are §4.3 ADVISORY/REPORT-ONLY (can NEVER gate/size/override or
+place a trade); the console is ESCALATE-ONLY (trip/hard_stop, never re-arm); input is auth'd to the
+operator chat_id; every external text is sanitized before an LLM; the LLM reply is TEXT-ONLY (no parser
+→ action). The acting path imports NEITHER `trading.slowloop` NOR `trading.console` (static AND dynamic,
+proven at RUNTIME: importing all 93 submit-path modules leaks ZERO anthropic/slowloop/console into
+sys.modules). The advisory regime is REPORT-ONLY (console reads it; the driver does not). **ZERO paper
+orders** — the 4 toys are gate-KILLED end-to-end (ADR §0); the agents/console cannot change that.
+Red-team triage + DEFERs + HARD tripwires: `docs/INC8-HARDENING-BACKLOG.md`. **Live two-way Telegram
+round-trip verified** (outbound send + a real-Claude grounded answer delivered to the operator's phone).
+**NEXT (a future run, NOT started): the live dashboard (the LAST layer) OR more of the §1.1 agent
+roster.** Increment 8 is sealed; do not reopen without cause.
+
+## ✅ Increment 8 — slow-loop agents + two-way Telegram console (SEALED + RED-TEAMED)
+
+Design panel `wf_7e98b8c9-e4e` → `docs/INCREMENT-8-DESIGN.md`; operator checkpoint (`AskUserQuestion`)
+confirmed all 3 recommended (report-only advisory; news+regime-synth+daily-report; full Swedish
+console). Built in 6 TDD clusters, each gated + committed + pushed + ff-main:
+- **C1 `a5ecd6f`** — `slowloop/contract.py` (`AgentArtifact`, frozen pydantic v2; §4.3 in the TYPE —
+  `reliability` is `Literal["textual","derived"]`, so an agent cannot mint a gateable artifact;
+  discriminated payload union; the regime-advisory label ⊆ the existing `RegimeLabel`) + `store.py`
+  (atomic temp→fsync→os.replace; `read_artifact` fails CLOSED to `None`) + `make inc8` (mirrors inc7;
+  leak-lint scope FROZEN — slowloop/console are outside the submit path).
+- **C2 `3e47f96`** — `slowloop/llm/anthropic_client.py` (thin httpx `Responder`, injectable `post`,
+  token-free error re-wrap, no new heavy dep) + `orchestrator.py` (run agent → validate → DISCARD on
+  exception/uncertain/below-floor, keep last-known-good byte-identical, ORANGE page at N=3).
+- **C3 `e79cdd5`** — `console/{authz,commands,poller}.py`: auth to the operator chat_id + update-shape
+  whitelist (forwarded/edited/channel/group/non-text dropped); deterministic command allow-list keyed
+  on a literal leading slash (escalate-only kill_switch, NO arm); refuse-trade-order; durable-offset
+  long-poll with cold-start backlog discard; the LLM reply is never re-dispatched.
+- **C4 `e85fbcd`** — `console/{state_reader,responder,app}.py`: a sanitized, staleness-guarded (18h)
+  briefing (kill-switch + RECORD-ONLY invariant + news + the REPORT-ONLY advisory regime); a Swedish
+  report-only Q&A responder grounded ONLY in the briefing (never invents numbers, §9); the full wiring
+  (`ConsoleKillSwitch` protocol has NO arm; getUpdates fetcher; token in a non-logged URL).
+- **C5 `65b9e53`** — `slowloop/agents/{news,regime_synth,daily_report}.py`: each sanitizes external
+  text BEFORE the LLM, parses the reply fail-closed, emits a §4.3-tagged artifact. regime_synth is
+  REPORT-ONLY + label ⊆ RegimeLabel (an out-of-space label FAILS CLOSED).
+- **C6 `a155d7a`** — `tests/unit/test_inc8_boundary.py`: the PHI1 boundary proof by EXPLICIT
+  package-identity import-graph walk (not the substring scan) — no acting module imports slowloop/
+  console (static + dynamic), with planted-import teeth; no broker from the LLM packages; console
+  imports only `executor.kill_switch`; the acting path never names the advisory artifact. **BUILD
+  COMPLETE, all eight gates green.**
+
+**RED-TEAM ✅ (`wf_5f80b480-871`, throttled → lead finished single-threaded).** 7 surfaces RUN against
+the shipped API: RT-1 phi1-runtime-leak (93 modules, zero leak) · RT-2 broker/re-arm (none) · RT-3
+advisory-poison + §4.3 (acting path reads nothing; forged `hard` rejected) · RT-4 schema-fail-open
+(corrupt→None; discard+keep-good+ORANGE@3) · RT-5 secret-leak (transports token-free) · RT-6
+console-injection+auth (foreign/forwarded dropped; injection→sanitized Q&A, no arm; jailbroken reply
+not re-dispatched) · RT-7 tails (cold-start discards stale control; no wedge; staleness guard). Two
+workflow finders independently confirmed RT-1 + RT-6. **Verdict: ADR §0 + PHI1 HOLD, no reachable hole,
+ZERO orders.** No FIX-NOW. DEFERs (live Tavily/Apify data adapters; advisory Model B disarmed; dormant
+orchestrator/poller) in `docs/INC8-HARDENING-BACKLOG.md`.
+
+**The slow loop is DORMANT** (no scheduler/poller wired to run unattended); the executor stays
+RECORD-ONLY behind the per-order GO. The LLM lives entirely OUTSIDE the deterministic submit path.
 
 ## ✅ Increment 7 — regime + allocator + driver (SEALED + RED-TEAMED)
 
