@@ -4,28 +4,54 @@
 > `docs/adr/ADR-001-foundation.md`, then run `make inc1`.** This is the canonical,
 > version-controlled state so the process is never lost to a context compaction.
 
-**As of:** 2026-06-26 · **Branch:** `build/increment-8-agents-console` — pushed; `main` ff'd.
-**Head/main:** `a155d7a` (Inc-8 BUILD COMPLETE; the red-team seal commit sits on top) · **`make inc1..inc8`
-→ ALL EIGHT PASS** (95.51% cov, `mypy --strict`, leak-lint clean over the unchanged submit-path closure).
-**✅ INCREMENT 8 SEALED + RED-TEAMED.** The slow-loop AGENT framework + the two-way Telegram operator
-console — the FIRST time LLMs enter ARCANE. Design-panel-driven (`wf_7e98b8c9-e4e`: 3/5 lenses, 2
-throttled → lead synthesized single-threaded), operator-confirmed at the checkpoint (advisory regime =
-**REPORT-ONLY Model A**; **3 agents** = news + regime-synth + daily-report; **full Swedish console**),
-red-team-hardened (`wf_5f80b480-871`: 2/6 finders confirmed HOLDS, 4 throttled → **lead finished
-SINGLE-THREADED** with own `uv run python` repros RT-1..RT-7; verdict **ADR §0 + PHI1 HOLD, no reachable
-hole, ZERO orders**). The agents/console are §4.3 ADVISORY/REPORT-ONLY (can NEVER gate/size/override or
-place a trade); the console is ESCALATE-ONLY (trip/hard_stop, never re-arm); input is auth'd to the
-operator chat_id; every external text is sanitized before an LLM; the LLM reply is TEXT-ONLY (no parser
-→ action). The acting path imports NEITHER `trading.slowloop` NOR `trading.console` (static AND dynamic,
-proven at RUNTIME: importing all 93 submit-path modules leaks ZERO anthropic/slowloop/console into
-sys.modules). The advisory regime is REPORT-ONLY (console reads it; the driver does not). **ZERO paper
-orders** — the 4 toys are gate-KILLED end-to-end (ADR §0); the agents/console cannot change that.
-Red-team triage + DEFERs + HARD tripwires: `docs/INC8-HARDENING-BACKLOG.md`. **Live two-way Telegram
-round-trip verified** (outbound send + a real-Claude grounded answer delivered to the operator's phone).
+**As of:** 2026-06-27 · **Branch:** `build/increment-8-agents-console` — pushed; `main` ff'd.
+**Head/main:** `8db37b4` (Inc-8.5 SEALED + RED-TEAMED) · **`make inc1..inc8` → ALL EIGHT PASS** (95.42%
+cov, `mypy --strict`, leak-lint clean; full boundary suite green).
+**✅ INCREMENT 8.5 SEALED + RED-TEAMED — THE CONVERSATIONAL CONSOLE.** The two-way Telegram trader now
+TALKS like a real warm assistant (the operator was disappointed it gave stiff, hardcoded, report-only
+answers and often didn't reply). A TONE+REACH fix INSIDE the sealed Inc-8 topology — **safety is
+topology, not tone; the LLM still can never reach the broker.** Design panel `wf_906b4845-a0e`;
+operator checkpoint (`AskUserQuestion`): conversation model = **Sonnet** (`claude-sonnet-4-6`). Built in
+5 TDD clusters + 1 red-team hardening, each gated + committed + pushed + ff-main:
+- **C1 `e1f149a`** — PART A: rewrote `console/responder.py` SYSTEM_PROMPT from report-only/short into a
+  warm, natural Swedish trader-assistant (kept grounding + never-invent-a-number + refuse-trade +
+  injection-resistance; dropped the "ENBART rapporterande/KORT/BARA utifrån briefing" straitjacket).
+- **C2 `fc2550c`** — PART B: `settings.load_model_settings` → conversation=Sonnet, agents stay Haiku;
+  `CONSOLE_MODEL_ID`/`AGENT_MODEL_ID` configurable; Opus one env-flip away. Thin httpx client unchanged.
+- **C3 `a08f456`** — PART D: widened `state_reader` briefing (om_arcane static context, gate verdict +
+  why, HONEST equity non-answer (no fake number), agent health, n_trials HWM, PRESENCE-ONLY posture
+  markers whose contents never reach the prompt) — all sanitized, read-only, fail-closed; +/halsa,/trials.
+- **C4 `90ba40f`** — PART C: NEW `console/run.py` + `make console` — the always-on listener
+  (`run_forever`: capped exponential backoff, fail-closed, token-free; cold-start backlog discard via the
+  durable offset; requires an explicit operator `TELEGRAM_CHAT_ID`, never auto-resolved).
+- **C5 `3540575`** — RUNTIME no-leak proof (subprocess: importing the submit path leaks ZERO
+  console/slowloop/anthropic into sys.modules, with teeth) + a Sonnet conversation live smoke.
+- **C6 `8db37b4`** — red-team verdict + closed a LATENT (unreachable) authz None==None fail-open
+  (`extract_authorized` now `str | None`, fails closed on an unconfigured operator / missing chat.id).
+
+**RED-TEAM ✅ (`wf_7187a5bb-d22`, 5 lenses, all SINGLE-THREADED with runnable repros, none throttled).**
+Verdict: **ADR §0 / PHI1 HOLD — the warmer + always-on console STILL holds the boundary; ZERO confirmed
+reachable issues; no FIX-NOW.** phi1-boundary · jailbreak-act (a `/flatta`-emitting reply → zero
+kill_switch calls, inert text) · always-on-listener (chat_id-only auth, backlog discard, capped backoff,
+no scheduler/SUBMIT_GO writes) · secret-leak (key in header only, type-only error re-wrap, token-free
+logs) · grounding-honesty (trade-intent refused pre-LLM, subtractive sanitize, stale→otillgänglig,
+equity honest). Triage + DEFERs: `docs/INC8.5-HARDENING-BACKLOG.md`. Design: `docs/INCREMENT-8.5-DESIGN.md`.
+
+**LIVE PROOF (delivered to the operator's phone):** three natural questions ("hur går det?", "vad tror
+du om dagen?", "förklara vad gaten gör") answered via the REAL Sonnet pipeline in 7–14 s — warm,
+grounded, honest, and it REFUSED to invent market data (said regime/news unavailable rather than
+fabricating, §9). The always-on listener (`make console`) booted (`model_id=claude-sonnet-4-6`),
+discarded the cold-start backlog (no stale replay), and is polling — the operator's own typed messages
+are now answered within seconds. **Executor untouched; ZERO orders.** For a DURABLE always-on, the
+operator runs `make console` in a terminal/tmux/nohup he leaves open (the one I started lives with this
+session).
+
 **NEXT (a future run, NOT started): the live dashboard (the LAST layer) OR more of the §1.1 agent
-roster.** Increment 8 is sealed; do not reopen without cause.
+roster.** Increment 8.5 is sealed; do not reopen without cause.
 
 ## ✅ Increment 8 — slow-loop agents + two-way Telegram console (SEALED + RED-TEAMED)
+> Superseded as the resume pointer by Inc-8.5 above; the Inc-8 detail is retained here for history.
+> (Prior head `a155d7a`; the Inc-8 seal commit `f5987dd`.)
 
 Design panel `wf_7e98b8c9-e4e` → `docs/INCREMENT-8-DESIGN.md`; operator checkpoint (`AskUserQuestion`)
 confirmed all 3 recommended (report-only advisory; news+regime-synth+daily-report; full Swedish
