@@ -29,14 +29,24 @@ def test_answerer_grounds_the_question_in_the_briefing_and_returns_text() -> Non
     assert "hur går det?" in captured["user"]
 
 
-def test_system_prompt_is_report_only_and_forbids_trading() -> None:
+def test_system_prompt_grounds_facts_and_forbids_trading() -> None:
     low = SYSTEM_PROMPT.lower()
-    # report-only / cannot trade / answer-from-briefing / honest
+    # facts are grounded in the briefing / cannot trade / honest about missing data
     assert "gate" in low  # only the gate->GO path can produce an order
     assert "order" in low or "ordrar" in low
     assert "briefing" in low
     # it is told NOT to invent data it does not have
     assert "hitta aldrig på" in low or "inte har den datan" in low
+
+
+def test_system_prompt_is_warm_and_conversational_not_a_straitjacket() -> None:
+    # Inc-8.5: the prompt must NOT re-impose the old report-only/short straitjacket, and must
+    # explicitly invite a real conversation (so a regression to the stiff prompt is caught).
+    low = SYSTEM_PROMPT.lower()
+    assert "enbart rapporterande" not in low
+    assert "svara kort" not in low
+    assert "samtal" in low  # it is told to hold a real conversation
+    assert "förklara" in low  # it is free to explain/teach
 
 
 def test_answerer_passes_the_briefing_fresh_each_call() -> None:
