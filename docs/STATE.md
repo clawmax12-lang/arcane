@@ -5,8 +5,67 @@
 > version-controlled state so the process is never lost to a context compaction.
 
 **As of:** 2026-06-27 · **Branch:** `build/increment-8-agents-console` — pushed; `main` ff'd.
-**Head/main:** `8db37b4` (Inc-8.5 SEALED + RED-TEAMED) · **`make inc1..inc8` → ALL EIGHT PASS** (95.42%
-cov, `mypy --strict`, leak-lint clean; full boundary suite green).
+**Head/main:** `07ec5a4` (Inc-8.6 SEALED + RED-TEAMED) · **`make inc1..inc8` + `make inc8.6` → ALL
+PASS** (94.85% cov, `mypy --strict`, leak-lint clean; full boundary + sanitizer suite green).
+
+**✅ INCREMENT 8.6 SEALED + RED-TEAMED — LIVE AGENT DATA: THE KEYS FINALLY RING.** The operator's
+API keys (Tavily/Apify/FRED) were loaded in `settings.py` but NEVER called — the news agent read a fake
+injected source, the orchestrator never ran, `state/` had no `news_state.json`, so the console
+truthfully said "nyheter otillgänglig". This increment makes them REAL: real Tavily news + FRED macro
+now flow to the LLM agents and the Telegram console, so asking "läs dagens nyheter" / "hur är
+marknadsläget?" returns REAL, current, sanitized headlines + a real FRED-fed regime. **Still
+SLOW-LOOP / ADVISORY** — the acting path reads NONE of it; PHI1 re-proven green; the LLM still can't
+trade. Design panel `wf_4a1b966b-930`; operator checkpoint (`AskUserQuestion`): Tavily+Apify both live,
+FRED macro wired (operator pasted a FRED key, live-verified vs DGS10), agentic on-demand refresh.
+Built in 6 TDD clusters + 1 red-team hardening, each gated + committed + pushed + ff-main:
+- **C1 `94d5258`** — `slowloop/sources/tavily_news.py` (HttpxTavilyNews — the PRIMARY live NewsSource,
+  mirroring `polygon_universe.py`: Bearer-header token never logged, fail-closed on any
+  transport/429/non-200/non-JSON/shape, empty→[], bad row dropped never a fabricated timestamp; RAW
+  title → NewsItem, the AGENT sanitizes before the LLM) + `sources/errors.py`.
+- **C2+C3 `faf19e3`** — `apify_news.py` (fail-closed FALLBACK; HONEST: the FREE plan returns
+  SUCCEEDED-but-empty datasets, Google proxy-blocked, so Tavily is the workhorse) + `composite.py`
+  (first non-raising source wins, never merges) + `fred_macro.py` (real `()->str` summary from
+  DGS10/DGS2/T10Y2Y/VIXCLS/DFF feeding the EXISTING RegimeSynthAgent) + `factory.py`.
+- **C4 `fdb42b5`** — `slowloop/run.py` + `make slowloop` — the runner: a PURE SCHEDULER over the
+  fail-closed `run_agent` choke (news ~20min, FRED regime ~60min); writes ONLY `state/slowloop/`,
+  never a submit marker; mirrors `console/run.py`.
+- **C5 `a1f5ac7`** — `console/news_refresh.py` + wiring — the AGENTIC on-demand freshness (operator's
+  steer: "it should just happen, be like you, don't hardcode a robot"): a market/news/status question
+  (or `/nyheter`) freshens real news before answering, bounded by a PERSISTED attempt-stamped
+  FAIL-CLOSED cooldown (≤6/hr), fully swallowed (never breaks the reply), ZERO broker surface.
+- **C6 `69d925b`** — boundary/sanitizer/secret teeth + `make inc8.6` + 3 live smokes. The acting-path
+  needle list now bans `news_state`/`NewsPayload`; the RUNTIME no-leak probe detects the runner;
+  adapters confined under slowloop; the sanitizer's TRUE invariant pinned honestly (markers scrubbed,
+  semantic steering passes through but is inert by TOPOLOGY); the leak-lint scope frozen byte-identical
+  to inc8.
+- **C7 `07ec5a4`** — red-team hardening (below).
+
+**RED-TEAM ✅ (`wf_7f1989b9-684`, 6 attack lenses each RUNNING real `uv run` repros → adversarial verify
+→ synth).** Verdict: **ADR §0 / PHI1 HOLD — no confirmed reachable fail-open / secret-leak / PHI1-break;
+ZERO orders.** All 6 binding invariants HELD with RUN evidence (RUNTIME no-leak: 8 submit-path
+entrypoints → 82 trading.* modules, ZERO slowloop/console/anthropic/tavily/apify/fred; vendor
+fail-closed full matrix; tokens type-only; cooldown fail-closed + swallowed; safety = topology). Two
+LOW + topologically-unreachable findings closed proactively (the sanitizer is now LOAD-BEARING):
+homoglyph role-label evasion (`ѕystem:` → `_redact_role_markers` folds homoglyphs before the role
+check) + FRED non-finite slip (`math.isfinite` guard). DEFERs in `docs/INC8.6-HARDENING-BACKLOG.md`.
+Design: `docs/INCREMENT-8.6-DESIGN.md`.
+
+**LIVE PROOF (delivered to the operator's phone):** the real Sonnet console answered "läs dagens
+nyheter" grounded in REAL Tavily headlines fetched today (AI-uncertainty selloff, OpenAI IPO delay
+pressuring chips, Nasdaq/S&P snapping a 2-week win streak, Palantir holding, gold recovering — risk_off,
+12 headlines) woven with the live FRED regime (low_vol_down, VIX 18.89, flat curve) — warm, grounded,
+honest about the regime being advisory-only. `make console` + `make slowloop` were started this session
+(they live with the session; for durable always-on the operator runs them in his own terminal/tmux).
+**Executor untouched; ZERO orders.** Apify on the FREE plan returns 0 items (proxy-blocked) → Tavily is
+the workhorse, Apify the wired fallback (honest §9).
+
+**NEXT (a future run, NOT started): the live dashboard (the LAST layer) OR more §1.1 agents (social/
+on-chain/filings; or wiring `daily_report` + the dormant orchestrator unattended).** Increment 8.6 is
+sealed; do not reopen without cause.
+
+## ✅ Increment 8.5 — the conversational console (SEALED + RED-TEAMED)
+> Superseded as the resume pointer by Inc-8.6 above; the Inc-8.5 detail is retained here for history.
+
 **✅ INCREMENT 8.5 SEALED + RED-TEAMED — THE CONVERSATIONAL CONSOLE.** The two-way Telegram trader now
 TALKS like a real warm assistant (the operator was disappointed it gave stiff, hardcoded, report-only
 answers and often didn't reply). A TONE+REACH fix INSIDE the sealed Inc-8 topology — **safety is
