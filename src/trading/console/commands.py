@@ -58,7 +58,7 @@ _FLATTA_REPLY: Final[str] = (
     "flattar ev. positioner. (Nu: record-only, 0 positioner.)"
 )
 _UNKNOWN_REPLY: Final[str] = (
-    "Okänt kommando. Tillgängligt: /status, /pausa, /flatta, /regim, /nyheter, "
+    "Okänt kommando. Tillgängligt: /status, /pausa, /flatta, /regim, /nyheter, /halsa, /trials, "
     '/vad-dödade-gaten, /help. Eller fråga mig vad som helst (t.ex. "hur går det?").'
 )
 _TRADE_REFUSAL: Final[str] = (
