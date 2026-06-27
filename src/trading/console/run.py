@@ -25,6 +25,7 @@ from trading.executor.kill_switch import DEFAULT_KILL_SWITCH_PATH, KillSwitch
 from trading.notify.telegram import build_notifier
 from trading.settings import load_model_settings, load_notify_settings, load_settings
 from trading.slowloop.llm.anthropic_client import build_responder
+from trading.slowloop.sources.factory import build_news_source
 
 _log = structlog.get_logger(__name__)
 
@@ -78,7 +79,7 @@ def _build_console_poller() -> tuple[ConsolePoller, str]:
     settings = load_settings()  # fail-fast: ANTHROPIC_API_KEY required
     key = settings.get("ANTHROPIC_API_KEY")
     token, chat_id = load_notify_settings()
-    conversation_model, _agent_model = load_model_settings()
+    conversation_model, agent_model = load_model_settings()
     if not token:
         raise ConsoleError(
             "TELEGRAM_BOT_TOKEN missing — console listener cannot start (fail closed)"
@@ -91,8 +92,22 @@ def _build_console_poller() -> tuple[ConsolePoller, str]:
     kill_switch = KillSwitch(DEFAULT_KILL_SWITCH_PATH)
     kill_switch.verify_writable()  # refuse to start a console that cannot escalate
     notifier = build_notifier(token, chat_id)
-    responder = build_responder(key, conversation_model)
-    deps = build_console_deps(notifier=notifier, kill_switch=kill_switch, responder=responder)
+    responder = build_responder(key, conversation_model)  # the warm conversation runs on Sonnet
+    # Inc-8.6 PART C: a live news source + a cheap Haiku responder power the on-demand refresh so a
+    # market/news question (or /nyheter) freshens real news before grounding (rate-limited, hushed).
+    news_source = build_news_source(
+        tavily_token=settings.get("TAVILY_API_KEY"),
+        apify_token=settings.get("APIFY_TOKEN"),
+    )
+    agent_responder = build_responder(key, agent_model)
+    deps = build_console_deps(
+        notifier=notifier,
+        kill_switch=kill_switch,
+        responder=responder,
+        news_source=news_source,
+        agent_responder=agent_responder,
+        agent_model=agent_model,
+    )
     poller = build_poller(token=token, operator_chat_id=chat_id, deps=deps)
     return poller, conversation_model
 

@@ -28,6 +28,11 @@ class KillSwitchLike(Protocol):
     def hard_stop(self, reason: str) -> object: ...
 
 
+def _no_op_refresh() -> object:
+    """Default ``refresh_news``: do nothing (used when no live news source is wired)."""
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class ConsoleDeps:
     """The injected, deterministic actuators + the grounded Q&A responder (wired in C4)."""
@@ -38,11 +43,29 @@ class ConsoleDeps:
     ]  # send a message to the operator (notifier.send_message — sanitizes)
     answer: Callable[[str], str]  # the grounded, report-only Q&A responder
     reads: Mapping[str, Callable[[], str]]  # read-only command -> text (/status, /regim, ...)
+    # Inc-8.6 PART C: best-effort, rate-limited, fail-closed on-demand news refresh. Default no-op
+    # so existing constructions keep working; the real one (build_news_refresher) is wired in C5.
+    refresh_news: Callable[[], object] = _no_op_refresh
 
 
 # A trade-intent matcher (broad = more refusals = safer, per operator). Runs on sanitized text.
 _TRADE_INTENT: Final[re.Pattern[str]] = re.compile(
     r"\b(köp\w*|sälj\w*|buy|sell|long|short|blank\w*|g[åa]\s+l[åa]ng|g[åa]\s+kort)\b",
+    re.IGNORECASE,
+)
+
+# A GENEROUS market/news/status relevance heuristic (sv+en). When the operator asks how things are
+# going OR about the market/news, the console PROACTIVELY freshens real news before answering ("it
+# should just happen", per operator) — NOT a canned-response selector: the reply is always the real
+# conversation; this only decides whether to freshen the underlying DATA. The hard cost bound is the
+# fail-closed cooldown in news_refresh, not this regex; it errs toward firing but skips abstract
+# questions ("förklara en sharpe-kvot") so it does not fetch news for an unrelated definition.
+_NEWS_RELEVANT: Final[re.Pattern[str]] = re.compile(
+    r"(nyhet|news|rubrik|headline|marknad|market|b[öo]rs|stock|aktie|index|s&p|nasdaq|dow"
+    r"|makro|macro|r[äa]nt|yield|inflation|fed|vix|regim|regime"
+    r"|hur\s+g[åa]r|hur\s+ligger|hur\s+ser\s+det\s+ut|hur\s+[äa]r\s+l[äa]get|l[äa]get"
+    r"|vad\s+h[äa]nder|vad\s+tror\s+du|hur\s+m[åa]r|how'?s\s+it\s+going|what'?s\s+(happening|up)"
+    r"|idag|dagens|i\s*natt|[öo]vernatt|today|tonight|overnight)",
     re.IGNORECASE,
 )
 
@@ -74,6 +97,9 @@ def _dispatch_command(token: str, deps: ConsoleDeps) -> None:
     elif token == "/flatta":
         deps.kill_switch.hard_stop(_FLATTA_REASON)
         deps.reply(_FLATTA_REPLY)
+    elif token == "/nyheter":
+        deps.refresh_news()  # force a fresh fetch (rate-limited, swallowed) BEFORE the read
+        deps.reply(deps.reads[token]())
     elif token in deps.reads:
         deps.reply(deps.reads[token]())  # READ-ONLY state lookup
     else:
@@ -96,4 +122,6 @@ def handle_message(text: str, deps: ConsoleDeps) -> None:
     if _TRADE_INTENT.search(sanitized):
         deps.reply(_TRADE_REFUSAL)  # deterministic refusal — no LLM call, no broker contact
         return
-    deps.reply(deps.answer(sanitized))  # grounded, report-only Q&A (text only)
+    if _NEWS_RELEVANT.search(sanitized):
+        deps.refresh_news()  # "it just happens": freshen real news before grounding (swallowed)
+    deps.reply(deps.answer(sanitized))  # grounded conversational Q&A (text only)

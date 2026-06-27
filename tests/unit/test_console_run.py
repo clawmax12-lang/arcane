@@ -155,15 +155,22 @@ def test_build_console_poller_wires_the_conversation_model(
         run_mod, "build_notifier", lambda token, chat_id: ("notifier", token, chat_id)
     )
 
+    models: list[str] = []
+
     def fake_build_responder(key: object, model_id: str) -> str:
-        captured["responder_model"] = model_id  # the conversation model must flow here
+        models.append(model_id)  # called twice: conversation (Sonnet/Opus) THEN agent (Haiku)
         captured["responder_key"] = key
-        return "responder"
+        return f"responder:{model_id}"
 
     monkeypatch.setattr(run_mod, "build_responder", fake_build_responder)
-    monkeypatch.setattr(
-        run_mod, "build_console_deps", lambda **kw: ("deps", kw["responder"], kw["kill_switch"])
-    )
+    monkeypatch.setattr(run_mod, "build_news_source", lambda **kw: "news_source")
+    captured_deps: dict[str, object] = {}
+
+    def fake_build_console_deps(**kw: object) -> str:
+        captured_deps.update(kw)
+        return "deps"
+
+    monkeypatch.setattr(run_mod, "build_console_deps", fake_build_console_deps)
 
     def fake_build_poller(*, token: str, operator_chat_id: str, deps: object) -> str:
         captured["poller_chat_id"] = operator_chat_id  # the SAME chat_id pins inbound auth
@@ -175,7 +182,12 @@ def test_build_console_poller_wires_the_conversation_model(
     poller, model = run_mod._build_console_poller()
     assert poller == "poller"
     assert model == "claude-opus-4-8"
-    assert captured["responder_model"] == "claude-opus-4-8"  # operator-selected conversation model
+    # the CONVERSATION responder is the operator model (first build); the AGENT responder is Haiku
+    assert models == ["claude-opus-4-8", "claude-haiku-4-5-20251001"]
+    assert captured_deps["responder"] == "responder:claude-opus-4-8"  # conversation -> warm Q&A
+    assert captured_deps["agent_responder"] == "responder:claude-haiku-4-5-20251001"  # news agent
+    assert captured_deps["agent_model"] == "claude-haiku-4-5-20251001"
+    assert captured_deps["news_source"] == "news_source"  # the live news source is wired through
     assert captured["poller_chat_id"] == "123456"  # inbound auth pinned to the operator chat_id
 
 

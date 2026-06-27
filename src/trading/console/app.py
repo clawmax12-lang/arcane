@@ -17,12 +17,17 @@ from typing import Any, Final, Protocol
 
 import httpx
 
-from trading.console.commands import ConsoleDeps, handle_message
+from trading.console.commands import ConsoleDeps, _no_op_refresh, handle_message
 from trading.console.errors import ConsoleError
+from trading.console.news_refresh import (
+    RefreshContext,
+    build_news_refresher,
+)
 from trading.console.poller import DEFAULT_OFFSET_PATH, ConsolePoller, UpdatesFetcher
 from trading.console.responder import build_answerer
 from trading.console.state_reader import gather_briefing, read_command_map
 from trading.notify.telegram import TelegramNotifier
+from trading.slowloop.agents.news import NewsSource
 from trading.slowloop.llm.anthropic_client import Responder
 
 
@@ -88,11 +93,20 @@ def build_console_deps(
     notifier: TelegramNotifier,
     kill_switch: ConsoleKillSwitch,
     responder: Responder,
+    news_source: NewsSource | None = None,
+    agent_responder: Responder | None = None,
+    agent_model: str = "claude-haiku-4-5-20251001",
     news_path: Path = DEFAULT_NEWS_PATH,
     regime_advisory_path: Path = DEFAULT_REGIME_ADVISORY_PATH,
     now_provider: Callable[[], datetime] = _utc_now,
 ) -> ConsoleDeps:
-    """Assemble the console's deterministic actuators + the grounded report-only Q&A responder."""
+    """Assemble the console actuators + grounded Q&A responder + the on-demand news refresh.
+
+    When a live ``news_source`` + an ``agent_responder`` (Haiku) are supplied, the console gains the
+    Inc-8.6 PART C on-demand refresh: a market/news/status question (or ``/nyheter``) freshens real
+    news before grounding (rate-limited, fail-closed, swallowed). Absent them, ``refresh_news`` is
+    the default no-op and the console answers from whatever the slow-loop runner last wrote.
+    """
 
     def briefing_provider() -> str:
         return gather_briefing(
@@ -101,6 +115,20 @@ def build_console_deps(
             regime_advisory_path=regime_advisory_path,
             now=now_provider(),
         ).to_prompt_text()
+
+    refresh_news: Callable[[], object]
+    if news_source is not None and agent_responder is not None:
+        refresh_news = build_news_refresher(
+            RefreshContext(
+                news_source=news_source,
+                responder=agent_responder,
+                model_id=agent_model,
+                news_path=news_path,
+                now=now_provider,
+            )
+        )
+    else:
+        refresh_news = _no_op_refresh
 
     return ConsoleDeps(
         kill_switch=kill_switch,
@@ -112,6 +140,7 @@ def build_console_deps(
             regime_advisory_path=regime_advisory_path,
             now_provider=now_provider,
         ),
+        refresh_news=refresh_news,
     )
 
 

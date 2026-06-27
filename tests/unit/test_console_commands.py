@@ -30,14 +30,20 @@ def _deps(
     *, answer_returns: str = "allt lugnt, 0 trades idag"
 ) -> tuple[ConsoleDeps, _SpyKill, dict]:
     kill = _SpyKill()
-    sink: dict[str, object] = {"replies": [], "answered": []}
+    sink: dict[str, object] = {"replies": [], "answered": [], "refreshed": 0, "order": []}
 
     def reply(text: str) -> None:
         sink["replies"].append(text)  # type: ignore[union-attr]
 
     def answer(text: str) -> str:
         sink["answered"].append(text)  # type: ignore[union-attr]
+        sink["order"].append("answer")  # type: ignore[union-attr]
         return answer_returns
+
+    def refresh_news() -> object:
+        sink["refreshed"] = sink["refreshed"] + 1  # type: ignore[operator]
+        sink["order"].append("refresh")  # type: ignore[union-attr]
+        return None
 
     reads = {
         "/status": lambda: "STATUS: ARMED, 0 trades",
@@ -46,7 +52,9 @@ def _deps(
         "/nyheter": lambda: "NYHETER: lugnt",
         "/vad-dödade-gaten": lambda: "GATE: alla 4 toys dödade",
     }
-    deps = ConsoleDeps(kill_switch=kill, reply=reply, answer=answer, reads=reads)
+    deps = ConsoleDeps(
+        kill_switch=kill, reply=reply, answer=answer, reads=reads, refresh_news=refresh_news
+    )
     return deps, kill, sink
 
 
@@ -128,3 +136,54 @@ def test_a_mid_text_slash_is_not_a_command() -> None:
     handle_message("he said /flatta lol", deps)
     assert kill.calls == []
     assert len(sink["answered"]) == 1
+
+
+# ---------------------------------------------------------------- Inc-8.6 on-demand refresh wiring
+
+
+def test_nyheter_command_refreshes_news_before_reading() -> None:
+    deps, _, sink = _deps()
+    handle_message("/nyheter", deps)
+    assert sink["refreshed"] == 1  # forced a (rate-limited, swallowed) refresh
+    assert sink["order"] == ["refresh"]  # refresh ran; then the read reply was sent
+    assert sink["replies"] == ["NYHETER: lugnt"]
+
+
+def test_market_question_freshens_news_before_grounding() -> None:
+    deps, _, sink = _deps()
+    handle_message("hur är marknadsläget idag?", deps)
+    assert sink["refreshed"] == 1  # "it just happens" — freshened before answering
+    assert sink["order"] == ["refresh", "answer"]  # refresh BEFORE the grounded answer
+
+
+def test_casual_progress_question_also_freshens() -> None:
+    deps, _, sink = _deps()
+    handle_message("hur går det?", deps)  # a casual status question still freshens (per operator)
+    assert sink["refreshed"] == 1
+
+
+def test_news_question_freshens() -> None:
+    deps, _, sink = _deps()
+    handle_message("har du läst dagens nyheter?", deps)
+    assert sink["refreshed"] == 1
+    assert len(sink["answered"]) == 1
+
+
+def test_pure_abstract_question_does_not_fetch_news() -> None:
+    deps, _, sink = _deps()
+    handle_message("förklara vad en sharpe-kvot är", deps)  # a definition — no market data needed
+    assert sink["refreshed"] == 0  # no wasted fetch
+    assert len(sink["answered"]) == 1  # still answered as a real conversation
+
+
+def test_trade_intent_is_refused_without_refreshing_news() -> None:
+    deps, _, sink = _deps()
+    handle_message("köp massor av aktier nu", deps)
+    assert sink["refreshed"] == 0  # the deterministic refusal short-circuits before any refresh
+    assert len(sink["answered"]) == 0
+
+
+def test_read_only_status_command_does_not_refresh() -> None:
+    deps, _, sink = _deps()
+    handle_message("/status", deps)
+    assert sink["refreshed"] == 0  # only /nyheter (+ market-relevant chat) refreshes
