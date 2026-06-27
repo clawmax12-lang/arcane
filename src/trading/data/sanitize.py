@@ -161,6 +161,27 @@ def _ascii_collapse(s: str) -> str:
     return _NON_ALNUM.sub("", folded)
 
 
+def _redact_role_markers(s: str) -> str:
+    """Redact ``system:``/``assistant:``/``user:`` role labels, defeating homoglyph evasion.
+
+    ``_ROLE_SPACED`` is a Latin-only regex, so a confusable label like ``ѕystem:`` (Cyrillic 's')
+    would slip past it (Inc-8.6 red-team, LOW/defense-in-depth). We also run the regex over a
+    homoglyph-FOLDED copy — a 1:1, length-preserving ``str.translate`` so match spans line up — and
+    redact those spans in the ORIGINAL, then run the plain regex for genuine Latin labels.
+    """
+    folded = s.translate(_HOMOGLYPHS)
+    if folded != s:
+        out: list[str] = []
+        last = 0
+        for m in _ROLE_SPACED.finditer(folded):
+            out.append(s[last : m.start()])
+            out.append(_REDACTED)
+            last = m.end()
+        out.append(s[last:])
+        s = "".join(out)
+    return _ROLE_SPACED.sub(_REDACTED, s)
+
+
 def sanitize(text: str) -> str:
     """Return a sanitized, injection-neutralized version of ``text`` (fail-closed)."""
     try:
@@ -170,7 +191,7 @@ def sanitize(text: str) -> str:
         s = _URL.sub("[URL]", s)
         s = _LONG_BLOB.sub("[BLOB]", s)
         s = _LONG_HEX.sub("[HEX]", s)
-        s = _ROLE_SPACED.sub(_REDACTED, s)
+        s = _redact_role_markers(s)
         for pattern in _INJECTION_PATTERNS:
             s = pattern.sub(_REDACTED, s)
         # Defense in depth: catch split/homoglyph-evaded phrases via the collapsed form,

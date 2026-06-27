@@ -15,6 +15,7 @@ choke). The values are HARD/STRUCTURED numbers, advisory only — never a gate i
 from __future__ import annotations
 
 import logging
+import math
 import time
 from collections.abc import Callable
 from typing import Final
@@ -112,6 +113,10 @@ class FredMacroSource:
             try:
                 value = float(str(raw))  # "." / None raise ValueError -> try the next, older obs
             except ValueError:
+                continue
+            # NUMERIC-only contract: float() also parses "NaN"/"inf"/"1e400" — reject non-finite so
+            # the summary never carries a nan%/inf% line (fail closed; cf. insight-fail-open).
+            if not math.isfinite(value):
                 continue
             return str(row.get("date", "")), value
         raise MacroSourceError(f"fred had no recent numeric observation for {series_id}")

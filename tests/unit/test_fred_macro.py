@@ -68,6 +68,25 @@ def test_no_numeric_observation_fails_closed() -> None:
         _src(_handler_for(table))()
 
 
+@pytest.mark.parametrize("bad", ["NaN", "inf", "-inf", "Infinity", "1e400"])
+def test_non_finite_value_is_rejected(bad: str) -> None:
+    # float() also parses "NaN"/"inf"/"1e400" — the NUMERIC-only contract must reject non-finite so
+    # the summary never carries a nan%/inf% line (Inc-8.6 red-team, LOW; cf. insight-fail-open).
+    table = dict(_FRED)
+    table["DGS10"] = [{"date": "2026-06-27", "value": bad}]
+    with pytest.raises(MacroSourceError):  # the only DGS10 obs is non-finite -> no numeric value
+        _src(_handler_for(table))()
+
+
+def test_non_finite_skips_to_the_next_numeric_observation() -> None:
+    table = dict(_FRED)
+    table["VIXCLS"] = [
+        {"date": "2026-06-27", "value": "inf"},  # non-finite -> skipped like a "."
+        {"date": "2026-06-25", "value": "18.89"},
+    ]
+    assert "VIX 18.89" in _src(_handler_for(table))()
+
+
 def test_non_2xx_fails_closed() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, json={"error": "rate"})
