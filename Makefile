@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := check
 PY := uv run
 
-.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 inc4 inc5 inc6 inc7 inc8 leak-lint clean clean-cache
+.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 inc4 inc5 inc6 inc7 inc8 console leak-lint clean clean-cache
 
 setup:
 	uv sync
@@ -134,3 +134,9 @@ inc8:
 	$(PY) mypy
 	$(PY) pytest --cov=trading --cov-report=term-missing --cov-fail-under=85 -q
 	@echo "Increment 8 gate: PASS"
+
+# Inc-8.5: the always-on two-way operator chat listener (network long-poll; NOT a gate — needs real
+# creds in .env). It is the CHAT listener ONLY — orthogonal to the dormant trading scheduler and the
+# per-order SUBMIT_GO marker. A typed Telegram message is answered within seconds. Ctrl-C to stop.
+console:
+	$(PY) python -m trading.console.run
