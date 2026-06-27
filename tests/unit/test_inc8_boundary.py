@@ -14,6 +14,9 @@ never even names its artifact.
 from __future__ import annotations
 
 import ast
+import json
+import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -182,3 +185,62 @@ def test_no_anthropic_key_shaped_literal_anywhere_in_src() -> None:
     # Defense in depth (the Telegram-token grep already covers src/ in test_notify_telegram.py).
     for py in _SRC.rglob("*.py"):
         assert "sk-ant-" not in py.read_text(encoding="utf-8"), f"anthropic key literal in {py}"
+
+
+# ----------------------------------------------------------------- the RUNTIME boundary (Inc-8.5)
+
+# Importing the submit path in a CLEAN subprocess must pull ZERO LLM surface into sys.modules. The
+# static + dynamic AST scans prove no import EDGE exists; this proves it at RUNTIME — even with the
+# Inc-8.5 always-on listener (run.py builds a real Sonnet Responder) present, the acting closure
+# loads with no trading.console / trading.slowloop / anthropic module in sys.modules.
+_SUBMIT_PATH_ENTRYPOINTS = (
+    "trading.executor.submit",
+    "trading.executor.loop",
+    "trading.driver.run_once",
+    "trading.scheduler.loop",
+    "trading.allocator.allocate",
+    "trading.regime.model",
+    "trading.bias_gate.high_water_mark",
+    "trading.notify.telegram",
+)
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _leaked_llm_modules_after_importing(modules: tuple[str, ...]) -> list[str]:
+    """In a fresh interpreter, import ``modules`` then return any LLM module left in sys.modules."""
+    probe = (
+        "import importlib, sys, json\n"
+        f"for m in {list(modules)!r}:\n"
+        "    importlib.import_module(m)\n"
+        "leaked = sorted(\n"
+        "    k for k in sys.modules\n"
+        "    if k.startswith('trading.console') or k.startswith('trading.slowloop')\n"
+        "    or k == 'anthropic' or k.startswith('anthropic.')\n"
+        ")\n"
+        "print(json.dumps(leaked))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        check=True,
+    )
+    return list(json.loads(result.stdout.strip().splitlines()[-1]))
+
+
+def test_runtime_importing_the_submit_path_leaks_no_llm_module() -> None:
+    leaked = _leaked_llm_modules_after_importing(_SUBMIT_PATH_ENTRYPOINTS)
+    assert (
+        leaked == []
+    ), f"the submit path pulled an LLM module into sys.modules at runtime: {leaked}"
+
+
+def test_runtime_leak_probe_has_teeth() -> None:
+    # Prove the runtime probe DETECTS a leak: importing the console listener MUST surface BOTH LLM
+    # packages (run.py imports trading.console.* AND trading.slowloop.llm) — so the green result
+    # above is a real absence, not a blind probe. (The console uses the thin httpx client, not the
+    # `anthropic` SDK, so `anthropic` is intentionally absent — the package leak is what we detect.)
+    leaked = _leaked_llm_modules_after_importing(("trading.console.run",))
+    assert any(k.startswith("trading.console") for k in leaked), leaked
+    assert any(k.startswith("trading.slowloop") for k in leaked), leaked

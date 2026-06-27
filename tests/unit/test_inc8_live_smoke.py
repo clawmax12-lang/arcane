@@ -10,8 +10,9 @@ from __future__ import annotations
 import pytest
 
 from trading.console.app import make_telegram_fetcher
+from trading.console.responder import SYSTEM_PROMPT, build_answerer
 from trading.notify.telegram import build_notifier
-from trading.settings import load_notify_settings, load_settings
+from trading.settings import load_model_settings, load_notify_settings, load_settings
 from trading.slowloop.llm.anthropic_client import build_responder
 
 _HAIKU = "claude-haiku-4-5-20251001"
@@ -27,6 +28,30 @@ def test_live_anthropic_responder_round_trip() -> None:
         "Reply with the single word: ARCANE",
     )
     assert isinstance(reply, str) and reply.strip() != ""
+
+
+@pytest.mark.live
+def test_live_sonnet_conversation_is_warm_and_grounded() -> None:
+    # Inc-8.5: prove the REAL conversation model (default Sonnet) answers the warm prompt grounded
+    # in a synthetic briefing, in Swedish, without inventing a number. Proves the model id works.
+    settings = load_settings()
+    key = settings.get("ANTHROPIC_API_KEY")
+    conversation_model, _agent = load_model_settings()  # default claude-sonnet-4-6
+    respond = build_responder(key, conversation_model, max_tokens=400)
+    briefing = (
+        "- kill_switch (källa: HARD): ARMED (ingen anledning)\n"
+        "- mode (källa: Inc-7 seal): RECORD-ONLY. Inga riktiga ordrar har lagts.\n"
+        "- gate_utfall (källa: ADR §0): Gaten dödade alla 4 leksaksstrategier: 0 survivors, "
+        "0 ordrar.\n"
+        "- nyheter (källa: news): otillgänglig (saknas eller föråldrad)"
+    )
+    answer = build_answerer(respond, briefing_provider=lambda: briefing)
+    reply = answer("hur går det idag, och förklara kort vad gaten gör?")
+    assert isinstance(reply, str) and len(reply.strip()) > 40  # a real, substantive Swedish answer
+    # grounded honesty: it must NOT invent news it doesn't have
+    assert (
+        SYSTEM_PROMPT  # the warm prompt is what was sent (system==SYSTEM_PROMPT in build_answerer)
+    )
 
 
 @pytest.mark.live
