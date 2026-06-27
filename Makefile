@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := check
 PY := uv run
 
-.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 inc4 inc5 inc6 inc7 inc8 console leak-lint clean clean-cache
+.PHONY: setup format lint typecheck test test-cov check inc1 inc2 inc3 inc4 inc5 inc6 inc7 inc8 inc8.6 console slowloop leak-lint clean clean-cache
 
 setup:
 	uv sync
@@ -140,3 +140,10 @@ inc8:
 # per-order SUBMIT_GO marker. A typed Telegram message is answered within seconds. Ctrl-C to stop.
 console:
 	$(PY) python -m trading.console.run
+
+# Inc-8.6: the always-on SLOW-LOOP runner (network; NOT a gate — needs real keys in .env). Drives the
+# orchestrator on a cadence: real Tavily/Apify news -> news_state.json (~20 min), FRED macro ->
+# regime_advisory.json (~60 min), each via the fail-closed run_agent choke. STRICTLY distinct from the
+# console listener AND the dormant trading scheduler; writes ONLY state/slowloop/. Ctrl-C to stop.
+slowloop:
+	$(PY) python -m trading.slowloop.run
