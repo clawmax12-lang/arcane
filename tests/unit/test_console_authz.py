@@ -69,3 +69,18 @@ def test_shapeless_or_missing_update_id_is_dropped() -> None:
 def test_chat_id_compared_as_string_so_int_or_str_config_both_work() -> None:
     # operator id configured as a string; telegram returns an int — must still match.
     assert extract_authorized(_update(16), "123456789") is not None
+
+
+def test_no_configured_operator_drops_everything_fail_closed() -> None:
+    # Defense in depth (red-team Inc-8.5): no operator chat_id configured => NOTHING is authorized;
+    # even a message whose chat.id is missing/None must not slip through via "None" == "None".
+    u_none_id = {"update_id": 18, "message": {"chat": {"id": None, "type": "private"}, "text": "x"}}
+    assert extract_authorized(u_none_id, None) is None  # the latent None==None fail-open is closed
+    assert extract_authorized(u_none_id, "") is None  # empty config is also no-operator
+    assert extract_authorized(_update(19), None) is None  # a real chat is dropped when unconfigured
+    assert extract_authorized(_update(20), "") is None
+
+
+def test_message_with_missing_chat_id_is_dropped_even_with_a_configured_operator() -> None:
+    u = {"update_id": 21, "message": {"chat": {"type": "private"}, "text": "x"}}  # no 'id'
+    assert extract_authorized(u, _OP) is None

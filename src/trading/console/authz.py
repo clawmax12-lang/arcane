@@ -24,8 +24,16 @@ class InboundMessage:
     text: str
 
 
-def extract_authorized(update: dict[str, object], operator_chat_id: str) -> InboundMessage | None:
-    """Return the operator's first-party private text message, or ``None`` (dropped)."""
+def extract_authorized(
+    update: dict[str, object], operator_chat_id: str | None
+) -> InboundMessage | None:
+    """Return the operator's first-party private text message, or ``None`` (dropped).
+
+    Fail-closed: with no configured ``operator_chat_id`` (None/empty) NOTHING is authorized, and a
+    message whose ``chat.id`` is missing/None is dropped — so the comparison can never match via
+    ``str(None) == str(None)`` (a latent fail-open closed defensively after the Inc-8.5 red-team;
+    unreachable in prod because ``run.py`` fails closed on a missing chat_id before any poller).
+    """
     update_id = update.get("update_id")
     if not isinstance(update_id, int):
         return None
@@ -41,7 +49,11 @@ def extract_authorized(update: dict[str, object], operator_chat_id: str) -> Inbo
         return None
     if chat.get("type") != "private":
         return None
-    if str(chat.get("id")) != str(operator_chat_id):
+    chat_id = chat.get("id")
+    # Fail closed: an unconfigured operator, or a message with no chat id, authorizes NOTHING.
+    if not operator_chat_id or chat_id is None:
+        return None
+    if str(chat_id) != str(operator_chat_id):
         return None
     text = message.get("text")
     if not isinstance(text, str):
