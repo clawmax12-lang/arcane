@@ -12,10 +12,19 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 from trading.risk.errors import ArcaneError
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]  # .../Trade (repo root; where .env lives)
+
+#: Inc-8.5 model selection. The two-way console CONVERSATION runs on Sonnet (warm + capable); the
+#: cheap STRUCTURED slow-loop agents (news/regime_synth/daily_report) stay on Haiku. Both are
+#: overridable via env (CONSOLE_MODEL_ID / AGENT_MODEL_ID); Opus is one env flip away. A model id is
+#: a request-body string only — never interpolated into a prompt and never logged with a secret.
+DEFAULT_CONVERSATION_MODEL: Final[str] = "claude-sonnet-4-6"
+DEFAULT_AGENT_MODEL: Final[str] = "claude-haiku-4-5-20251001"
+_OPUS_MODEL: Final[str] = "claude-opus-4-8"  # available to the operator via CONSOLE_MODEL_ID
 
 REQUIRED_KEYS: tuple[str, ...] = (
     "APCA_API_KEY_ID",
@@ -32,6 +41,8 @@ OPTIONAL_KEYS: tuple[str, ...] = (
     "GITHUB_TOKEN",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_CHAT_ID",
+    "CONSOLE_MODEL_ID",
+    "AGENT_MODEL_ID",
 )
 
 
@@ -110,3 +121,24 @@ def load_notify_settings(
         path = dotenv_path if dotenv_path is not None else _PROJECT_ROOT / ".env"
         src = {**read_dotenv(path), **os.environ}
     return (src.get("TELEGRAM_BOT_TOKEN") or None, src.get("TELEGRAM_CHAT_ID") or None)
+
+
+def load_model_settings(
+    env: Mapping[str, str] | None = None, *, dotenv_path: Path | None = None
+) -> tuple[str, str]:
+    """Return ``(conversation_model, agent_model)`` for the LLM layers (Inc-8.5).
+
+    ``CONSOLE_MODEL_ID`` selects the two-way console conversation model (default Sonnet);
+    ``AGENT_MODEL_ID`` selects the cheap structured slow-loop agents (default Haiku). A blank or
+    absent value degrades to the default — these knobs never fail-fast. Reads independently of the
+    trading-credential gate: an injected ``env`` is used verbatim (tests); otherwise the process
+    environment is layered over the project ``.env`` (real env vars win), like ``load_settings``.
+    """
+    if env is not None:
+        src: Mapping[str, str] = env
+    else:
+        path = dotenv_path if dotenv_path is not None else _PROJECT_ROOT / ".env"
+        src = {**read_dotenv(path), **os.environ}
+    conversation = src.get("CONSOLE_MODEL_ID") or DEFAULT_CONVERSATION_MODEL
+    agent = src.get("AGENT_MODEL_ID") or DEFAULT_AGENT_MODEL
+    return (conversation, agent)

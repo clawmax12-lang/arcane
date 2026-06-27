@@ -7,8 +7,11 @@ from pathlib import Path
 import pytest
 
 from trading.settings import (
+    DEFAULT_AGENT_MODEL,
+    DEFAULT_CONVERSATION_MODEL,
     OPTIONAL_KEYS,
     MissingCredentialError,
+    load_model_settings,
     load_settings,
     read_dotenv,
 )
@@ -85,3 +88,50 @@ def test_real_env_overrides_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("APCA_API_KEY_ID", "FROMENV")  # real export must win over .env
     s = load_settings(dotenv_path=p)
     assert s.get("APCA_API_KEY_ID") == "FROMENV"
+
+
+# ── Inc-8.5 PART B: model selection (conversation = Sonnet, agents = Haiku; configurable) ──
+
+
+def test_model_defaults_are_sonnet_conversation_and_haiku_agents() -> None:
+    conv, agent = load_model_settings({})  # nothing set -> the Inc-8.5 defaults
+    assert conv == DEFAULT_CONVERSATION_MODEL == "claude-sonnet-4-6"
+    assert agent == DEFAULT_AGENT_MODEL == "claude-haiku-4-5-20251001"
+
+
+def test_console_model_id_overrides_conversation_only() -> None:
+    conv, agent = load_model_settings({"CONSOLE_MODEL_ID": "claude-opus-4-8"})
+    assert conv == "claude-opus-4-8"  # operator opted into Opus for the chat
+    assert agent == DEFAULT_AGENT_MODEL  # the cheap structured agents stay Haiku
+
+
+def test_agent_model_id_overrides_agents_only() -> None:
+    conv, agent = load_model_settings({"AGENT_MODEL_ID": "claude-something-cheap"})
+    assert conv == DEFAULT_CONVERSATION_MODEL
+    assert agent == "claude-something-cheap"
+
+
+def test_blank_model_ids_fall_back_to_defaults() -> None:
+    conv, agent = load_model_settings({"CONSOLE_MODEL_ID": "", "AGENT_MODEL_ID": ""})
+    assert (conv, agent) == (DEFAULT_CONVERSATION_MODEL, DEFAULT_AGENT_MODEL)
+
+
+def test_model_id_keys_are_optional_and_never_fail_fast() -> None:
+    # The model knobs degrade to defaults; their absence must not break load_settings.
+    assert "CONSOLE_MODEL_ID" in OPTIONAL_KEYS
+    assert "AGENT_MODEL_ID" in OPTIONAL_KEYS
+    s = load_settings(dict(FULL))  # no model ids provided -> still loads
+    assert s.get("CONSOLE_MODEL_ID") is None
+
+
+def test_model_settings_read_dotenv_layered_under_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    p = tmp_path / ".env"
+    p.write_text("CONSOLE_MODEL_ID=claude-from-file\n")
+    monkeypatch.delenv("CONSOLE_MODEL_ID", raising=False)
+    conv, _ = load_model_settings(dotenv_path=p)
+    assert conv == "claude-from-file"  # .env is read when no explicit env is passed
+    monkeypatch.setenv("CONSOLE_MODEL_ID", "claude-from-env")  # real export wins
+    conv2, _ = load_model_settings(dotenv_path=p)
+    assert conv2 == "claude-from-env"
