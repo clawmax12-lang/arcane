@@ -135,6 +135,24 @@ inc8:
 	$(PY) pytest --cov=trading --cov-report=term-missing --cov-fail-under=85 -q
 	@echo "Increment 8 gate: PASS"
 
+# Increment 8.6 gate: real vendor news/macro adapters (slowloop/sources) + the slow-loop runner +
+# the agentic on-demand console refresh. The new code lives ENTIRELY inside slowloop/console (the two
+# LLM packages outside the submit path), so the leak-lint scope is DELIBERATELY UNCHANGED — BYTE-
+# IDENTICAL to inc8's 11-path list, which does NOT scan slowloop/console (proven by a meta-assertion
+# in test_inc8_6_safety.py; cf. memory insight-gate-optimization-can-weaken). The boundary is proven
+# instead by tests/unit/test_inc8_boundary.py (extended: needles += news_state/NewsPayload; the
+# runtime no-leak probe now also detects the runner; adapters confined under slowloop; no acting-
+# driver import). The sanitizer's TRUE invariant (markers redacted, semantic steering passes through
+# but is inert by TOPOLOGY) is pinned in test_inc8_6_safety.py. The @pytest.mark.live vendor smokes
+# are gate-EXCLUDED. mypy already type-checks the new packages (files=["src/trading"]).
+inc8.6:
+	$(PY) ruff check src tests
+	$(PY) black --check src tests
+	$(PY) python -m trading.data.leak_lint src/trading/data src/trading/factors src/trading/backtest src/trading/bias_gate src/trading/notify src/trading/guards src/trading/executor src/trading/regime src/trading/allocator src/trading/driver src/trading/scheduler
+	$(PY) mypy
+	$(PY) pytest --cov=trading --cov-report=term-missing --cov-fail-under=85 -q
+	@echo "Increment 8.6 gate: PASS"
+
 # Inc-8.5: the always-on two-way operator chat listener (network long-poll; NOT a gate — needs real
 # creds in .env). It is the CHAT listener ONLY — orthogonal to the dormant trading scheduler and the
 # per-order SUBMIT_GO marker. A typed Telegram message is answered within seconds. Ctrl-C to stop.

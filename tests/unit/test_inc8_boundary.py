@@ -163,16 +163,54 @@ def test_console_imports_only_kill_switch_from_executor() -> None:
     assert not bad, f"console imports an executor module other than kill_switch: {bad}"
 
 
+# ----------------------------------------------------- Inc-8.6 vendor adapters stay inside slowloop
+
+#: Acting DRIVER machinery the LLM packages must never reach (beyond the broker ban above). The
+#: slow-loop runner is a SEPARATE scheduler over advisory agents — never the trading scheduler.
+_ACTING_DRIVER_PREFIXES = ("trading.driver", "trading.scheduler", "trading.allocator")
+
+
+def test_vendor_adapters_live_under_slowloop_not_a_top_level_package() -> None:
+    # The Inc-8.6 adapters import NewsItem from slowloop.agents.news, so they MUST live INSIDE
+    # slowloop. A data/ home or a top-level trading.sources/ would be legally importable by the
+    # submit path (which imports trading.data freely), silently re-opening PHI1.
+    assert (_SRC / "slowloop" / "sources" / "tavily_news.py").is_file()
+    assert (_SRC / "slowloop" / "run.py").is_file()
+    assert not (_SRC / "sources").exists(), "no top-level trading.sources package may exist"
+    assert not (_SRC / "news").exists(), "no top-level trading.news package may exist"
+
+
+def test_no_llm_package_imports_an_acting_driver_symbol() -> None:
+    # Beyond the broker ban: the LLM packages must not import the acting DRIVER machinery either.
+    # The slow-loop runner schedules advisory agents; it is NOT the SCHEDULER_ENABLE trading loop.
+    offenders: list[str] = []
+    for pkg in _LLM_PACKAGES:
+        for py in (_SRC / pkg).rglob("*.py"):
+            for target in _import_targets(py):
+                if any(target == p or target.startswith(p + ".") for p in _ACTING_DRIVER_PREFIXES):
+                    offenders.append(f"{py}: imports {target}")
+    assert not offenders, f"an LLM package imports acting-driver machinery: {offenders}"
+
+
 # ----------------------------------------------------------------- report-only proof
 
 
 def test_acting_path_never_references_the_advisory_regime_artifact() -> None:
-    # Model A (report-only): the acting path never reads regime_advisory.json and never names the
-    # slowloop/console packages in its source. (The advisory is consumed ONLY by the console.)
+    # Model A (report-only): the acting path never reads regime_advisory.json / news_state.json and
+    # never names the slowloop/console packages or the news payload type in its source. THIS is the
+    # Inc-8.6 guarantee (per the design adversary): the §4.2 sanitizer does NOT stop a semantically-
+    # steering headline — TOPOLOGY does. A steered news digest can reach the operator's eyes, but no
+    # acting-path module can read it, so it can never gate/size/order. Pinned in CI by the needles.
     offenders: list[str] = []
     for py in _acting_world_files():
         text = py.read_text(encoding="utf-8")
-        for needle in ("regime_advisory", "trading.slowloop", "trading.console"):
+        for needle in (
+            "regime_advisory",
+            "news_state",
+            "NewsPayload",
+            "trading.slowloop",
+            "trading.console",
+        ):
             if needle in text:
                 offenders.append(f"{py}: mentions {needle!r}")
     assert not offenders, f"the acting path references an advisory/LLM surface: {offenders}"
@@ -243,4 +281,12 @@ def test_runtime_leak_probe_has_teeth() -> None:
     # `anthropic` SDK, so `anthropic` is intentionally absent — the package leak is what we detect.)
     leaked = _leaked_llm_modules_after_importing(("trading.console.run",))
     assert any(k.startswith("trading.console") for k in leaked), leaked
+    assert any(k.startswith("trading.slowloop") for k in leaked), leaked
+
+
+def test_runtime_leak_probe_detects_the_slowloop_runner() -> None:
+    # Importing the NEW Inc-8.6 slow-loop runner MUST surface trading.slowloop in the probe — so the
+    # green submit-path result is a real absence AND the runner (with its httpx vendor adapters) is
+    # confirmed to live in the LLM closure, never the submit-path closure.
+    leaked = _leaked_llm_modules_after_importing(("trading.slowloop.run",))
     assert any(k.startswith("trading.slowloop") for k in leaked), leaked
